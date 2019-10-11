@@ -35,9 +35,9 @@ server_setup() {
     clear
     output "Надеюсь, вам понравится этот скрипт установки, созданный https://spigotmc.ru. Пожалуйста, введите информацию. "
     read -p "Введите email админа (пример admin@example.com) : " EMAIL
-    read -p "Введите название сервера (пример portal.example.com) : " SERVNAME
+    read -p "Введите IP панели или Домен (пример portal.example.com) : " SERVNAME
     read -p "Введите временную зону (пример Europe/Moscow) : " TIME
-    read -p "Пароль портала : " PORTALPASS
+    read -p "Пароль панели : " PORTALPASS
 }
 
 initial() {
@@ -128,8 +128,8 @@ pterodactyl() {
     sudo chmod -R 777 storage/* bootstrap/cache
     curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
     composer setup
-    # create mysql structure
-    # create database
+    # создание структуры MySQL
+    # создание базы данных
     password=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`  
     Q1="CREATE DATABASE IF NOT EXISTS pterodactyl;"
     Q2="GRANT ALL ON *.* TO 'panel'@'localhost' IDENTIFIED BY '$password';"
@@ -197,7 +197,7 @@ echo '
         access_log off;
         error_log  /var/log/nginx/pterodactyl.app-error.log error;
     
-        # allow larger file uploads and longer script runtimes
+        # разрешить загрузку больших файлов и более длительное время выполнения скрипта
             client_max_body_size 100m;
         client_body_timeout 120s;
     
@@ -238,7 +238,7 @@ echo '
             listen 80;
             listen [::]:80;
             server_name '"${SERVNAME}"';
-            # enforce https
+            # применяю https
             return 301 https://$server_name$request_uri;
         }
         
@@ -253,13 +253,13 @@ echo '
             access_log /var/log/nginx/pterodactyl.app-accress.log;
             error_log  /var/log/nginx/pterodactyl.app-error.log error;
         
-            # allow larger file uploads and longer script runtimes
+            # разрешить загрузку больших файлов и более длительное время выполнения скрипта
             client_max_body_size 100m;
             client_body_timeout 120s;
             
             sendfile off;
         
-            # strengthen ssl security
+            # укрепляю безопасность ssl
             ssl_certificate /etc/letsencrypt/live/'"${SERVNAME}"'/fullchain.pem;
             ssl_certificate_key /etc/letsencrypt/live/'"${SERVNAME}"'/privkey.pem;
             ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
@@ -268,7 +268,7 @@ echo '
             ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
             ssl_dhparam /etc/ssl/certs/dhparam.pem;
         
-            # Add headers to serve security related headers
+            # Добавляю заголовки для обслуживания заголовков, связанных с безопасностью
             add_header Strict-Transport-Security "max-age=15768000; preload;";
             add_header X-Content-Type-Options nosniff;
             add_header X-XSS-Protection "1; mode=block";
@@ -371,9 +371,9 @@ pterodactyl_daemon() {
     tar --strip-components=1 -xzvf v0.3.7.tar.gz
     npm install --only=production
 
-    output "Этот шаг требует, чтобы вы создали свой первый узел через панель, продолжайте только после того, как вы получите основной код"
+    output "Этот шаг требует, чтобы вы создали свой первый узел через панель управления. Продолжайте только после того, как вы получите основной код для Демона в Панели"
     output "Вставьте код в файл и затем нажмите CTRL + o, затем CTRL + x."
-    read -p "Нажмите Enter, чтобы продолжить" nothing
+    read -p "Нажмите Enter, чтобы продолжить и открыть файл для вставки кода" nothing
     sudo nano /srv/daemon/config/core.json
 sudo bash -c 'cat > /etc/systemd/system/wings.service' <<-EOF
 [Unit]
@@ -422,7 +422,7 @@ password='"${rootpasswd}"'
     
 }
 
-# Process command line...
+# Процесс командной строки...
 while [ $# -gt 0 ]; do
     case $1 in
         --help | -h)

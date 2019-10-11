@@ -7,9 +7,11 @@
 
 Установка:
 Шаг 1. Скопируйте код и вставте в консоль и нажмите Enter.
+
 curl -Lo install.sh https://raw.githubusercontent.com/stashenko/Pterodactyl-Panel-Install/master/install.sh
 
 Шаг 2. Скопируйте код и вставте в консоль и нажмите Enter.
+
 bash install.sh -i [nginx] или [apache]
 
 Пример для nginx : 

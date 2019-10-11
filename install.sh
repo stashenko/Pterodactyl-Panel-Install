@@ -10,7 +10,7 @@
 
 
 clear
-# получить имя сервера os: Ubuntu или Centos
+# получаем имя сервера от os: Ubuntu или Centos
 server_name=`lsb_release -ds | awk -F ' ' '{printf $1}' | tr A-Z a-z`
 version_name=`lsb_release -cs`
 usage() {
@@ -30,7 +30,7 @@ displayErr() {
     echo
     exit 1;
 }
-    # получить пользовательские данные
+    # получаем пользовательские данные
 server_setup() {
     clear
     output "Надеюсь, вам понравится этот скрипт установки, созданный https://spigotmc.ru. Пожалуйста, введите информацию. "
@@ -42,7 +42,7 @@ server_setup() {
 
 initial() {
     output "Обновление всех пакетов"
-    # обновить пакет и обновить Ubuntu
+    # обновяем пакет и обновяем Ubuntu
     sudo apt-get -y update 
     sudo apt-get -y upgrade
     sudo apt-get -y autoremove
@@ -94,11 +94,11 @@ install_timezone() {
     output "Спасибо за использование этого установочного скрипта."
     # check if link file
     sudo [ -L /etc/localtime ] &&  sudo unlink /etc/localtime
-    # update time zone
+    # обновление часового пояса
     sudo ln -sf /usr/share/zoneinfo/$TIME /etc/localtime
     sudo aptitude -y install ntpdate
     sudo ntpdate time.stdtime.gov.tw
-    # write time to clock.
+    # записываю время в часы.
     sudo hwclock -w
 }
 
@@ -121,7 +121,7 @@ server() {
 
 pterodactyl() {
     output "Установка Pterodactyl-Panel."
-    # Установка панели
+    # Установка панели v0.7.15
     cd /var/www/pterodactyl/html
     curl -Lo v0.7.15.tar.gz https://github.com/Pterodactyl/Panel/archive/v0.7.15.tar.gz
     tar --strip-components=1 -xzvf v0.7.15.tar.gz

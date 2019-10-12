@@ -74,9 +74,9 @@ install_mariadb() {
     sudo aptitude -y install mariadb-server
     
     # добавление пользователя в группу, создание структуры каталогов, установка разрешений
-    sudo mkdir -p /var/www/pterodactyl/html
-    sudo chown -R $whoami:$whoami /var/www/pterodactyl/html
-    sudo chmod -R 775 /var/www/pterodactyl/html
+    sudo mkdir -p /var/www/pterodactyl
+    sudo chown -R $whoami:$whoami /var/www/pterodactyl
+    sudo chmod -R 775 /var/www/pterodactyl
 }
 
 install_dependencies() {
@@ -122,7 +122,7 @@ server() {
 pterodactyl() {
     output "Установка Pterodactyl-Panel."
     # Установка панели v0.7.15
-    cd /var/www/pterodactyl/html
+    cd /var/www/pterodactyl
     curl -Lo v0.7.15.tar.gz https://github.com/Pterodactyl/Panel/archive/v0.7.15.tar.gz
     tar --strip-components=1 -xzvf v0.7.15.tar.gz
     sudo chmod -R 777 storage/* bootstrap/cache
@@ -160,13 +160,13 @@ pterodactyl_1() {
 sudo bash -c 'cat > /etc/supervisor/conf.d/pterodactyl-worker.conf' <<-'EOF'
 [program:pterodactyl-worker]
 process_name=%(program_name)s_%(process_num)02d
-command=php /var/www/pterodactyl/html/artisan queue:work database --queue=high,standard,low --sleep=3 --tries=3
+command=php /var/www/pterodactyl/artisan queue:work database --queue=high,standard,low --sleep=3 --tries=3
 autostart=true
 autorestart=true
 user=www-data
 numprocs=2
 redirect_stderr=true
-stdout_logfile=/var/www/pterodactyl/html/storage/logs/queue-worker.log
+stdout_logfile=/var/www/pterodactyl/storage/logs/queue-worker.log
 EOF
     output "Обновление Supervisor"
     sudo supervisorctl reread
@@ -179,127 +179,53 @@ pterodactyl_niginx() {
     output "Создание исходного файла конфигурации веб-сервера"
 echo '
     server {
-        listen 80;
-        listen [::]:80;
-        server_name '"${SERVNAME}"';
-    
-        root "/var/www/pterodactyl/html/public";
-        index index.html index.htm index.php;
-        charset utf-8;
-    
-        location / {
-            try_files $uri $uri/ /index.php?$query_string;
-        }
-    
-        location = /favicon.ico { access_log off; log_not_found off; }
-        location = /robots.txt  { access_log off; log_not_found off; }
-    
-        access_log off;
-        error_log  /var/log/nginx/pterodactyl.app-error.log error;
-    
-        # разрешить загрузку больших файлов и более длительное время выполнения скрипта
-            client_max_body_size 100m;
-        client_body_timeout 120s;
-    
-        sendfile off;
-    
-        location ~ \.php$ {
-            fastcgi_split_path_info ^(.+\.php)(/.+)$;
-            fastcgi_pass unix:/var/run/php/php7.2-fpm.sock;
-            fastcgi_index index.php;
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-            fastcgi_intercept_errors off;
-            fastcgi_buffer_size 16k;
-            fastcgi_buffers 4 16k;
-            fastcgi_connect_timeout 300;
-            fastcgi_send_timeout 300;
-            fastcgi_read_timeout 300;
-        }
-    
-        location ~ /\.ht {
-            deny all;
-        }
-        location ~ /.well-known {
-            allow all;
-        }
+    listen 80;
+    ServerName '"${SERVNAME}"';
+
+    root /var/www/pterodactyl/public;
+    index index.html index.htm index.php;
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
     }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    access_log off;
+    error_log  /var/log/nginx/pterodactyl.app-error.log error;
+
+    # allow larger file uploads and longer script runtimes
+    client_max_body_size 100m;
+    client_body_timeout 120s;
+
+    sendfile off;
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php7.2-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param PHP_VALUE "upload_max_filesize = 100M \n post_max_size=100M";
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_intercept_errors off;
+        fastcgi_buffer_size 16k;
+        fastcgi_buffers 4 16k;
+        fastcgi_connect_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_read_timeout 300;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
 ' | sudo -E tee /etc/nginx/sites-available/pterodactyl.conf >/dev/null 2>&1
 
     sudo ln -s /etc/nginx/sites-available/pterodactyl.conf /etc/nginx/sites-enabled/pterodactyl.conf
-    output "Установка LetsEncrypt и настройка SSL"
-    sudo service nginx restart
-    sudo aptitude -y install letsencrypt
-    sudo letsencrypt certonly -a webroot --webroot-path=/var/www/pterodactyl/html/public --email "$EMAIL" --agree-tos -d "$SERVNAME"
-    sudo rm /etc/nginx/sites-available/pterodactyl.conf
-    sudo openssl dhparam -out /etc/ssl/certs/dhparam.pem 2048
-    echo '
-        server {
-            listen 80;
-            listen [::]:80;
-            server_name '"${SERVNAME}"';
-            # применяю https
-            return 301 https://$server_name$request_uri;
-        }
-        
-        server {
-            listen 443 ssl http2;
-            listen [::]:443 ssl http2;
-            server_name '"${SERVNAME}"';
-        
-            root /var/www/pterodactyl/html/public;
-            index index.php;
-        
-            access_log /var/log/nginx/pterodactyl.app-accress.log;
-            error_log  /var/log/nginx/pterodactyl.app-error.log error;
-        
-            # разрешить загрузку больших файлов и более длительное время выполнения скрипта
-            client_max_body_size 100m;
-            client_body_timeout 120s;
-            
-            sendfile off;
-        
-            # укрепляю безопасность ssl
-            ssl_certificate /etc/letsencrypt/live/'"${SERVNAME}"'/fullchain.pem;
-            ssl_certificate_key /etc/letsencrypt/live/'"${SERVNAME}"'/privkey.pem;
-            ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-            ssl_prefer_server_ciphers on;
-            ssl_session_cache shared:SSL:10m;
-            ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
-            ssl_dhparam /etc/ssl/certs/dhparam.pem;
-        
-            # Добавляю заголовки для обслуживания заголовков, связанных с безопасностью
-            add_header Strict-Transport-Security "max-age=15768000; preload;";
-            add_header X-Content-Type-Options nosniff;
-            add_header X-XSS-Protection "1; mode=block";
-            add_header X-Robots-Tag none;
-            add_header Content-Security-Policy "frame-ancestors 'self'";
-        
-            location / {
-                    try_files $uri $uri/ /index.php?$query_string;
-              }
-        
-            location ~ \.php$ {
-                fastcgi_split_path_info ^(.+\.php)(/.+)$;
-                fastcgi_pass unix:/var/run/php/php7.2-fpm.sock;
-                fastcgi_index index.php;
-                include fastcgi_params;
-                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-                fastcgi_intercept_errors off;
-                fastcgi_buffer_size 16k;
-                fastcgi_buffers 4 16k;
-                fastcgi_connect_timeout 300;
-                fastcgi_send_timeout 300;
-                fastcgi_read_timeout 300;
-                include /etc/nginx/fastcgi_params;
-            }
-        
-            location ~ /\.ht {
-                deny all;
-            }
-        }
-    ' | sudo -E tee /etc/nginx/sites-available/pterodactyl.conf >/dev/null 2>&1    
-
+	
     sudo service nginx restart
 }
 
@@ -308,9 +234,9 @@ pterodactyl_apache() {
     echo '
 <VirtualHost *:80>
     ServerName '"${SERVNAME}"'
-    DocumentRoot "/var/www/pterodactyl/html/public"
+    DocumentRoot "/var/www/pterodactyl/public"
     AllowEncodedSlashes On
-      <Directory "/var/www/pterodactyl/html/public">
+      <Directory "/var/www/pterodactyl/public">
         AllowOverride all
       </Directory>
 </VirtualHost>
@@ -321,22 +247,22 @@ pterodactyl_apache() {
     sudo service apache2 restart
     output "Установка LetsEncrypt и настройка SSL"
     sudo aptitude -y install letsencrypt
-    sudo letsencrypt certonly -a webroot --webroot-path=/var/www/pterodactyl/html/public --email $EMAIL --agree-tos -d $SERVNAME
+    sudo letsencrypt certonly -a webroot --webroot-path=/var/www/pterodactyl/public --email $EMAIL --agree-tos -d $SERVNAME
 
     echo '
 <VirtualHost *:80>
     ServerName '"${SERVNAME}"'
-    DocumentRoot "/var/www/pterodactyl/html/public"
+    DocumentRoot "/var/www/pterodactyl/public"
     AllowEncodedSlashes On
-       <Directory "/var/www/pterodactyl/html/public">
+       <Directory "/var/www/pterodactyl/public">
           AllowOverride all
        </Directory>
 </VirtualHost>
     NameVirtualHost *:443
 <VirtualHost *:443>=
-	  DocumentRoot "/var/www/pterodactyl/html/public"
+	  DocumentRoot "/var/www/pterodactyl/public"
     ServerName '"${SERVNAME}"'
-    <Directory "/var/www/pterodactyl/html/public">
+    <Directory "/var/www/pterodactyl/public">
       AllowOverride all
     </Directory>
 SSLEngine on
@@ -400,9 +326,9 @@ EOF
       sudo service wings start
 
       sudo usermod -aG www-data $whoami
-      sudo chown -R www-data:www-data /var/www/pterodactyl/html
+      sudo chown -R www-data:www-data /var/www/pterodactyl
       sudo chown -R www-data:www-data /srv/daemon
-      sudo chmod -R 775 /var/www/pterodactyl/html
+      sudo chmod -R 775 /var/www/pterodactyl
       sudo chmod -R 775 /srv/daemon
       echo '
 [client]
@@ -415,7 +341,7 @@ password='"${rootpasswd}"'
       sudo chmod 0600 ~/.my.cnf
       output "Установка пароля root для mysql"
       sudo mysqladmin -u root password $rootpasswd    
-      (crontab -l ; echo "* * * * * php /var/www/pterodactyl/html/artisan schedule:run >> /dev/null 2>&1")| crontab -
+      (crontab -l ; echo "* * * * * php /var/www/pterodactyl/artisan schedule:run >> /dev/null 2>&1")| crontab -
       
       output "Пожалуйста, перезагрузите сервер, чтобы применить новые разрешения"
     

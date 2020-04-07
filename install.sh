@@ -123,8 +123,8 @@ pterodactyl() {
     output "Установка Pterodactyl-Panel."
     # Установка панели v0.7.15
     cd /var/www/pterodactyl
-    curl -Lo v0.7.15.tar.gz https://github.com/Pterodactyl/Panel/archive/v0.7.15.tar.gz
-    tar --strip-components=1 -xzvf v0.7.15.tar.gz
+    curl -Lo v0.7.17.tar.gz https://github.com/Pterodactyl/Panel/archive/v0.7.17.tar.gz
+    tar --strip-components=1 -xzvf v0.7.17.tar.gz
     sudo chmod -R 777 storage/* bootstrap/cache
     curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
     composer setup
@@ -293,8 +293,8 @@ pterodactyl_daemon() {
     sudo mkdir -p /srv/daemon /srv/daemon-data
     sudo chown -R $whoami:$whoami /srv/daemon
     cd /srv/daemon
-    curl -Lo v0.3.7.tar.gz https://github.com/Pterodactyl/Daemon/archive/v0.3.7.tar.gz
-    tar --strip-components=1 -xzvf v0.3.7.tar.gz
+    curl -Lo v0.6.13.tar.gz https://github.com/Pterodactyl/Daemon/archive/v0.6.13.tar.gz
+    tar --strip-components=1 -xzvf v0.6.13.tar.gz
     npm install --only=production
 
     output "Этот шаг требует, чтобы вы создали свой первый узел через панель управления. Продолжайте только после того, как вы получите основной код для Демона в Панели"

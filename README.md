@@ -1,5 +1,5 @@
 # Pterodactyl-Panel-Install
-Этот скрипт установит Pterodactyl-Panel v0.7.15 в вашей системе Ubuntu 18.x.
+Этот скрипт установит Pterodactyl-Panel v0.7.17 и Daemon v0.6.13в вашей системе Ubuntu 18.x.
 
 У вас есть выбор: установить Nginx или Apache.
 

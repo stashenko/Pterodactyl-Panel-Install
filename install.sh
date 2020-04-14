@@ -43,9 +43,12 @@ server_setup() {
 initial() {
     output "Обновление всех пакетов"
     # обновяем пакет и обновяем Ubuntu
-    sudo apt-get -y update 
-    sudo apt-get -y upgrade
-    sudo apt-get -y autoremove
+    sudo apt -y install software-properties-common curl
+    sudo LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
+    sudo add-apt-repository -y ppa:chris-lea/redis-server
+    sudo curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+    sudo apt update
+    sudo apt-add-repository universe
     output "Переключение на Aptitude"
     sudo apt-get -y install aptitude
     sudo aptitude update -y
@@ -82,6 +85,7 @@ install_mariadb() {
 install_dependencies() {
     output "Установка PHP и зависимостей."
     sudo aptitude -y install php7.2 php7.2-cli php7.2-gd php7.2-mysql php7.2-pdo php7.2-mbstring php7.2-tokenizer php7.2-bcmath php7.2-xml php7.2-fpm php7.2-curl php7.2-zip mariadb-server nginx tar unzip git redis-server
+}
 
 install_dependencies_apache() {
     output "Установка PHP и зависимостей."
@@ -124,7 +128,7 @@ pterodactyl() {
     cd /var/www/pterodactyl
     curl -Lo v0.7.17.tar.gz https://github.com/Pterodactyl/Panel/archive/v0.7.17.tar.gz
     tar --strip-components=1 -xzvf v0.7.17.tar.gz
-    sudo chmod -R 777 storage/* bootstrap/cache
+    sudo chmod -R 755 storage/* bootstrap/cache
     curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
     composer setup
     # создание структуры MySQL

@@ -8,84 +8,48 @@ warn(){
     echo -e '\e[31m'$1'\e[0m';
 }
 
+PANEL=v1.5.1
+WINGS=v1.4.6
+PANEL_LEGACY=v0.7.19
+DAEMON_LEGACY=v0.6.13
+PHPMYADMIN=5.1.1
+
 preflight(){
-    output "Сценарий установки и обновления птеродактиля"
+    output "Скрипт установки и обновления Pterodactyl"
+    output "Copyright © 2021 The_stas <spigotmc.ru>."
     output ""
 
-    output "Обратите внимание, что этот скрипт предназначен для установки на новую ОС. Установка его на не свежую ОС может вызвать проблемы."
-    output "Автоматическое обнаружение операционной системы."
-    if [ -r /etc/os-release ]; then
-        lsb_dist="$(. /etc/os-release && echo "$ID")"
-        dist_version="$(. /etc/os-release && echo "$VERSION_ID")"
-    else
-        exit 1
-    fi
-    output "OS: $lsb_dist $dist_version обнаружено."
-    output ""
+    output "Обратите внимание, что этот сценарий предназначен для установки на новую ОС. Установка на не новую ОС может вызвать проблемы."
+    output "Автоматическое определение операционной системы ..."
 
-    if [ "$lsb_dist" =  "ubuntu" ]; then
-        if [ "$dist_version" != "19.04" ] && [ "$dist_version" != "18.10" ] && [ "$dist_version" != "18.04" ] && [ "$dist_version" != "16.04" ]; then
-            output "Неподдерживаемая версия Ubuntu. Поддерживаются только Ubuntu 19.04, 18.10, 18.04, 16.04."
-            exit 2
-        fi
-    elif [ "$lsb_dist" = "debian" ]; then
-        if [ "$dist_version" != "9" ] && [ "$dist_version" != "8" ]; then
-            output "Неподдерживаемая версия Debian. Поддерживаются только Debian 9 и 8."
-            exit 2
-        fi
-    elif [ "$lsb_dist" = "fedora" ]; then
-        if [ "$dist_version" != "29" ] && [ "$dist_version" != "28" ]; then
-            output "Неподдерживаемая версия Fedora. Поддерживаются только Fedora 29 и 28."
-            exit 2
-        fi
-    elif [ "$lsb_dist" = "centos" ]; then
-        if [ "$dist_version" != "7" ]; then
-            output "Неподдерживаемая версия CentOS. Поддерживается только CentOS 7."
-            exit 2
-        fi
-    elif [ "$lsb_dist" = "rhel" ]; then
-        if [ "$dist_version" != "7" ]&&[ "$dist_version" != "7.1" ]&&[ "$dist_version" != "7.2" ]&&[ "$dist_version" != "7.3" ]&&[ "$dist_version" != "7.4" ]&&[ "$dist_version" != "7.5" ]&&[ "$dist_version" != "7.6" ]; then
-            output "Неподдерживаемая версия RHEL. Поддерживается только RHEL 7."
-            exit 2
-        fi
-    elif [ "$lsb_dist" != "ubuntu" ] && [ "$lsb_dist" != "debian" ] && [ "$lsb_dist" != "centos" ] && [ "$lsb_dist" != "rhel" ]; then
-        output "Неподдерживаемая операционная система."
-        output ""
-        output "Поддерживаемые ОС:"
-        output "Ubuntu: 19.04 18.10, 18.04, 16.04"
-        output "Debian: 9, 8"
-        output "Fedora: 29, 28"
-        output "CentOS: 7"
-        output "RHEL: 7"
-        exit 2
-    fi
+    os_check
 
     if [ "$EUID" -ne 0 ]; then
-        output "Пожалуйста, запустите от имени пользователя root"
+        output "Пожалуйста, запустите как пользователь root."
         exit 3
     fi
 
-    output "Автоматическое обнаружение архитектуры инициализировано."
+    output "Автоматическое определение архитектуры ..."
     MACHINE_TYPE=`uname -m`
-    if [ ${MACHINE_TYPE} == 'x86_64' ]; then
-        output "64-битный сервер обнаружен! Поехали дальше."
+    if [ "${MACHINE_TYPE}" == 'x86_64' ]; then
+        output "Обнаружен 64-битный сервер! Поехали дальше."
         output ""
     else
-        output "Обнаружена неподдерживаемая архитектура! Пожалуйста, переключитесь на 64-битный (x86_64)."
+        output "Обнаружена неподдерживаемая архитектура! Пожалуйста, перейдите на 64-разрядную версию (x86_64)."
         exit 4
     fi
 
-    output "Автоматическое обнаружение виртуализации."
+    output "Автоматическое обнаружение виртуализации ..."
     if [ "$lsb_dist" =  "ubuntu" ]; then
         apt-get update --fix-missing
         apt-get -y install software-properties-common
         add-apt-repository -y universe
-        apt-get -y install virt-what
+        apt-get -y install virt-what curl
     elif [ "$lsb_dist" =  "debian" ]; then
         apt update --fix-missing
-        apt-get -y install software-properties-common virt-what wget
+        apt-get -y install software-properties-common virt-what wget curl dnsutils
     elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
-        yum -y install virt-what wget
+        yum -y install virt-what wget bind-utils
     fi
     virt_serv=$(echo $(virt-what))
     if [ "$virt_serv" = "" ]; then
@@ -96,252 +60,320 @@ preflight(){
         output "Виртуализация: обнаружено Xen-HVM."
     elif [ "$virt_serv" = "xen xen-hvm aws" ]; then
         output "Виртуализация: обнаружено Xen-HVM on AWS."
-        warn "При выделении узла используйте внутренний ip, поскольку Google Cloud использует NAT."
-        warn "Возобновление через 10 секунд."
+        warn "При создании выделения для этого узла используйте внутренний IP-адрес, поскольку Google Cloud использует маршрутизацию NAT."
+        warn "Возобновление через 10 секунд ..."
         sleep 10
     else
-        output "Виртуализация: $virt_serv обнаружено."
+        output "Виртуализация: $virt_serv ."
     fi
     output ""
     if [ "$virt_serv" != "" ] && [ "$virt_serv" != "kvm" ] && [ "$virt_serv" != "vmware" ] && [ "$virt_serv" != "hyperv" ] && [ "$virt_serv" != "openvz lxc" ] && [ "$virt_serv" != "xen xen-hvm" ] && [ "$virt_serv" != "xen xen-hvm aws" ]; then
-        warn "Unsupported Virtualization method. Please consult with your provider whether your server can run Docker or not. Proceed at your own risk."
-        warn "No support would be given if your server breaks at any point in the future."
-        warn "Proceed?\n[1] Yes.\n[2] No."
+        warn "Обнаружен неподдерживаемый тип виртуализации. Проконсультируйтесь со своим хостинг-провайдером, может ли ваш сервер запускать Docker или нет. Действуйте на свой страх и риск."
+        warn "Никакой поддержки не будет, если ваш сервер сломается в любой момент."
+        warn "Продолжить?\n[1] Да.\n[2] Нет."
         read choice
         case $choice in 
-            1)  output "Процесс..."
+            1)  output "Продолжение ..."
                 ;;
-            2)  output "Отмена установки..."
+            2)  output "Отмена установки ..."
                 exit 5
                 ;;
         esac
         output ""
     fi
 
-    output "Обнаружение ядра инициализировано."
+    output "Обнаружение ядра ..."
     if echo $(uname -r) | grep -q xxxx; then
-        output "Ядро OVH обнаружено. Скрипт не будет работать. Пожалуйста, установите ваш сервер с общим ядром / дистрибутивом."
-        output "Когда вы переустанавливаете свой сервер, нажмите 'custom installation' и после этого нажмите 'use distribution'."
-        output "Вы также можете захотеть сделать пользовательские разделы, удалить раздел /home и дать /all оставшееся пространство."
-        output "Пожалуйста, не стесняйтесь обращаться к нам, если вам нужна помощь по этому вопросу."
+        output "Обнаружено ядро OVH. Этот скрипт работать не будет. Пожалуйста, переустановите свой сервер, используя стандартное / дистрибутивное ядро."
+        output "Когда вы переустанавливаете свой сервер, нажмите 'custom installation', а после этого нажмите 'use distribution'"
+        output "Вы также можете сделать пользовательское разбиение на разделы, удалить раздел / home и предоставить / all the remaining space.."
         exit 6
     elif echo $(uname -r) | grep -q pve; then
-        output "Обнаружено ядро Proxmox LXE. Вы решили продолжить на последнем этапе, поэтому мы действуем на свой страх и риск."
-        output "Продолжаем рискованную операцию..."
+        output "Обнаружено ядро Proxmox LXE. Вы решили продолжить последний шаг, поэтому мы действуем на ваш страх и риск."
+        output "Продолжение рискованной операции ..."
     elif echo $(uname -r) | grep -q stab; then
         if echo $(uname -r) | grep -q 2.6; then 
-            output "OpenVZ 6 обнаружен. Этот сервер определенно не будет работать с Docker, независимо от того, что скажет ваш провайдер. Выход, чтобы избежать дальнейших повреждений."
+            output "Обнаружен OpenVZ 6. Этот сервер определенно не будет работать с Docker, что бы ни сказал ваш провайдер. Отмените установку во избежание дальнейших повреждений."
             exit 6
         fi
-    elif echo $(uname -r) | grep -q lve; then
-        output "Ядро CloudLinux обнаружено. Docker не поддерживается в CloudLinux. Скрипт завершится, чтобы избежать дальнейших повреждений."
-        exit 6
     elif echo $(uname -r) | grep -q gcp; then
-        output "Обнаружена облачная платформа Google."
-        warn "Пожалуйста, убедитесь, что у вас есть статическая настройка ip, иначе система не будет работать после перезагрузки."
-        warn "Также убедитесь, что брандмауэр Google позволяет портам, необходимым для нормальной работы сервера."
-        warn "При выделении узла используйте внутренний ip, поскольку Google Cloud использует NAT."
-        warn "Возобновление через 10 секунд."
+        output "Обнаружена Google Cloud Platform."
+        warn "Убедитесь, что у вас установлен статический IP-адрес, иначе система не будет работать после перезагрузки."
+        warn "Также убедитесь, что брандмауэр GCP разрешает порты, необходимые для нормальной работы сервера."
+        warn "При создании выделения для этого узла используйте внутренний IP-адрес, поскольку Google Cloud использует маршрутизацию NAT."
+        warn "Возобновление через 10 секунд ..."
         sleep 10
     else
-        output "Не обнаружил ни одного плохого ядра. Поехали дальше."
+        output "Не обнаружил плохих ядер. Поехали дальше..."
         output ""
+    fi
+}
 
-    ########ANTILEAK########
-    if  [ "$lsb_dist" =  "ubuntu" ] || [ "$dist_version" = "19.04" ]; then
-        apt -y install docker.io
+os_check(){
+    if [ -r /etc/os-release ]; then
+        lsb_dist="$(. /etc/os-release && echo "$ID")"
+        dist_version="$(. /etc/os-release && echo "$VERSION_ID")"
+        if [ "$lsb_dist" = "rhel" ]; then
+            dist_version="$(echo $dist_version | awk -F. '{print $1}')"
+        fi
     else
-        curl -sSL https://get.docker.com/ | CHANNEL=stable bash
+        exit 1
     fi
-    systemctl enable docker
-    systemctl start docker
     
-    ########IF USER IS LEGIT AND RERUN THE LATEST SCRIPT, IT WILL RUN docker swarm leave >/dev/null 2>&1 AND LEAVE########
+    if [ "$lsb_dist" =  "ubuntu" ]; then
+        if  [ "$dist_version" != "20.04" ] && [ "$dist_version" != "18.04" ]; then
+            output "Неподдерживаемая версия Ubuntu. Поддерживаются только Ubuntu 20.04 и 18.04."
+            exit 2
+        fi
+    elif [ "$lsb_dist" = "debian" ]; then
+        if [ "$dist_version" != "10" ]; then
+            output "Неподдерживаемая версия Debian. Поддерживается только Debian 10."
+            exit 2
+        fi
+    elif [ "$lsb_dist" = "fedora" ]; then
+        if [ "$dist_version" != "33" ] && [ "$dist_version" != "32" ]; then
+            output "Неподдерживаемая версия Fedora. Поддерживаются только Fedora 33 и 32."
+            exit 2
+        fi
+    elif [ "$lsb_dist" = "centos" ]; then
+        if [ "$dist_version" != "8" ]; then
+            output "Неподдерживаемая версия CentOS. Поддерживаются только CentOS Stream и 8."
+            exit 2
+        fi
+    elif [ "$lsb_dist" = "rhel" ]; then
+        if  [ $dist_version != "8" ]; then
+            output "Неподдерживаемая версия RHEL. Поддерживается только RHEL 8."
+            exit 2
+        fi
+    elif [ "$lsb_dist" != "ubuntu" ] && [ "$lsb_dist" != "debian" ] && [ "$lsb_dist" != "centos" ]; then
+        output "Неподдерживаемая операционная система."
+        output ""
+        output "Поддерживаемая ОС:"
+        output "Ubuntu: 20.04, 18.04"
+        output "Debian: 10"
+        output "Fedora: 33, 32"
+        output "CentOS: 8, 7"
+        output "RHEL: 8"
+        exit 2
     fi
-    ########ANTILEAK########
+}
 
-    output "Пожалуйста, выберите вариант установки:"
-    output "[0] Завершение работы скрипта."
-    output "[1] Установка Pterodactyl panel."
-    output "[2] Установка Pterodactyl daemon."
-    output "[3] Установка Pterodactyl panel и daemon."
-    output "[4] Установка standalone SFTP server."
-    output "[5] Обновление 0.7.x panel до 0.7.17."
-    output "[6] Обновление 0.6.x daemon до 0.6.13."
-    output "[7] Обновление panel до 0.7.17 и daemon до 0.6.13"
-    output "[8] Обновление standalone SFTP server 1.0.4."
-    output "[9] Установка или Обновление phpMyAdmin 5.0.2 (Используйте это только после того, как вы установили панель.)"
-    output "[10] Установка тем Pterodactyl."
-    output "[11] Аварийный сброс пароля root MariaDB."
-    output "[12] Аварийный сброс базы данных."
-    read choice
+install_options(){
+    output "Выберите вариант установки:"
+    output "[1] Установить панель ${PANEL}."
+    output "[2] Установить панель ${PANEL_LEGACY}."
+    output "[3] Установить wings ${WINGS}."
+    output "[4] Установить daemon ${DAEMON_LEGACY}."
+    output "[5] Установить панель ${PANEL} и wings ${WINGS}."
+    output "[6] Установить панель ${PANEL_LEGACY} и daemon ${DAEMON_LEGACY}."
+    output "[7] Установить standalone SFTP server."
+    output "[8] Обновить (1.x) панель до ${PANEL}."
+    output "[9] Обновить (0.7.x) панель до ${PANEL}."
+    output "[10] Обновить (0.7.x) панель до ${PANEL_LEGACY}."
+    output "[11] Обновить (0.6.x) daemon до ${DAEMON_LEGACY}."
+    output "[12] Миграция daemon в wings."
+    output "[13] Обновить панель до ${PANEL} и миграция в wings"
+    output "[14] Обновить панель до ${PANEL_LEGACY} и daemon до ${DAEMON_LEGACY}"
+    output "[15] Обновить standalone SFTP server до (1.0.5)."
+    output "[16] Сделайте Pterodactyl совместимым с мобильным приложением (используйте это только после того, как вы установили панель - Используйте https://pterodactyl.cloud для получения дополнительной информации)."
+    output "[17] Update mobile compatibility."
+    output "[18] Установка или обновление phpMyAdmin (${PHPMYADMIN}) (используйте это только после того, как вы установили панель)."
+    output "[19] Установите автономный хост базы данных (только для использования в установках с daemon)."
+    output "[20] Установка тем Pterodactyl (Только для панели ${PANEL_LEGACY} )."
+    output "[21] Аварийный сброс пароля root MariaDB."
+    output "[22] Аварийный сброс пароля базы данных."
+    read -r choice
     case $choice in
         1 ) installoption=1
-            output "Вы выбрали установку только панели."
+            output "Вы выбрали установку только панели ${PANEL}."
             ;;
         2 ) installoption=2
-            output "Вы выбрали установку только Демона."
+            output "Вы выбрали установку только панели ${PANEL_LEGACY}."
             ;;
         3 ) installoption=3
-            output "Вы выбрали установку панели и демона."
+            output "Вы выбрали установку только  wings ${WINGS}."
             ;;
         4 ) installoption=4
-            output "Вы выбрали установку автономного SFTP-сервера."
+            output "Вы выбрали установку только  daemon ${DAEMON_LEGACY}."
             ;;
         5 ) installoption=5
-            output "Вы решили обновить панель."
+            output "Вы выбрали установку панели ${PANEL} и wings ${WINGS}."
             ;;
         6 ) installoption=6
-            output "Вы решили обновить демона."
+            output "Вы выбрали установку панели ${PANEL_LEGACY} и daemon."
             ;;
         7 ) installoption=7
-            output "Вы решили обновить и панель и демон."
+            output "Вы выбрали установку автономного сервера SFTP."
             ;;
         8 ) installoption=8
-            output "Вы выбрали обновить автономный SFTP."
+            output "Вы выбрали обновление панели до ${PANEL}."
             ;;
         9 ) installoption=9
-            output "Вы выбрали установку или обновления phpMyAdmin."
+            output "Вы выбрали обновление панели до ${PANEL}."
             ;;
         10 ) installoption=10
-            output "Вы решили изменить тему Pterodactyl."
+            output "Вы выбрали обновление панели до ${PANEL_LEGACY}."
             ;;
         11 ) installoption=11
-            output "Вы выбрали сброс пароля root MariaDB."
+            output "Вы выбрали обновление  daemon до ${DAEMON_LEGACY}."
             ;;
         12 ) installoption=12
-            output "Вы выбрали сброс информации о хосте базы данных."
+            output "Вы выбрали миграцию daemon ${DAEMON_LEGACY} в wings ${WINGS}."
             ;;
+        13 ) installoption=13
+            output "Вы выбрали обновление панели до ${PANEL} и миграцию в wings ${WINGS}."
+            ;;
+        14 ) installoption=14
+            output "Вы выбрали обновление панели до ${PANEL} и daemon до ${DAEMON_LEGACY}."
+            ;;
+        15 ) installoption=15
+            output "Вы выбрали обновление автономного SFTP."
+            ;;
+        16 ) installoption=16
+            output "Вы активировали совместимость мобильного приложения."
+            ;;
+        17 ) installoption=17
+            output "Вы выбрали обновление совместимости мобильного приложения."
+            ;;
+        18 ) installoption=18
+            output "Вы выбрали установку или обновление phpMyAdmin ${PHPMYADMIN}."
+            ;;
+        19 ) installoption=19
+            output "Вы выбрали установку хоста базы данных."
+            ;;
+        20 ) installoption=20
+            output "Вы решили изменить Pterodactyl ${PANEL_LEGACY}."
+            ;;
+        21 ) installoption=21
+            output "Вы выбрали сброс пароля root MariaDB."
+            ;;
+        22 ) installoption=22
+            output "Вы выбрали сброс пароля базы данных."
+            ;;
+        * ) output "Вы ввели неверный выбор."
+            install_options
     esac
 }
 
 webserver_options() {
-    output "Пожалуйста, выберите, какой веб-сервер вы хотели бы использовать: \n [1] Nginx (рекомендуется). \n [2] Apache2 / Httpd."
-    read choice
+    output "Выберите, какой веб-сервер вы хотите использовать:\n[1] Nginx (рекомендуется).\n[2]  Apache2/httpd."
+    read -r choice
     case $choice in
         1 ) webserver=1
             output "Вы выбрали Nginx."
             output ""
             ;;
         2 ) webserver=2
-            output "Вы выбрали Apache2 / Httpd."
+            output "Вы выбрали Apache2/httpd."
             output ""
             ;;
-        * ) output "Вы не ввели правильный выбор."
+        * ) output "Вы ввели неверный выбор."
             webserver_options
     esac
 }
 
 theme_options() {
-    output "Хотите установить темы Fonix?"
-    output "[1] Нет."
-    output "[2] Tango Twist."
-    output "[3] Blue Brick."
-    output "[4] Minecraft Madness."
-    output "[5] Lime Stitch."
-    output "[6] Red Ape."
-    output "[7] BlackEnd Space."
-    output "[8] Nothing But Graphite."
+    output "Хотите установить одну из тем Fonix?"
+    warn "СЕЙЧАС FONIX НЕ ОБНОВЛЯЕТ СВОЮ ТЕМУ ДО 0.7.19, ЧТОБЫ ИСПРАВИТЬ XSS EXPLOIT В PTERODACTYL <= 0.7.18. НЕ ИСПОЛЬЗУЙТЕ ЭТО. НАСТОЯТЕЛЬНО РЕКОМЕНДУЮ ВЫБРАТЬ [1]."
+    output "[1] НЕТ."
+    output "[2] Super Pink и Fluffy."
+    output "[3] Tango Twist."
+    output "[4] Blue Brick."
+    output "[5] Minecraft Madness."
+    output "[6] Lime Stitch."
+    output "[7] Red Ape."
+    output "[8] BlackEnd Space."
+    output "[9] Nothing But Graphite."
     output ""
     output "Вы можете узнать о темах Fonix здесь: https://github.com/TheFonix/Pterodactyl-Themes"
-    read choice
+    read -r choice
     case $choice in
         1 ) themeoption=1
-            output "Вы выбрали для установки vanilla Pterodactyl."
+            output "Вы выбрали для установки стандартную тему Pterodactyl."
             output ""
             ;;
         2 ) themeoption=2
-            output "Вы выбрали для установки Fonix's Tango Twist."
+            output "Вы выбрали для установки Fonix's Super Pink и Fluffy."
             output ""
             ;;
         3 ) themeoption=3
-            output "Вы выбрали для установки Fonix's Blue Brick."
+            output "Вы выбрали для установки Fonix's Tango Twist."
             output ""
             ;;
         4 ) themeoption=4
-            output "Вы выбрали для установки Fonix's Minecraft Madness."
+            output "Вы выбрали для установки Fonix's Blue Brick."
             output ""
             ;;
         5 ) themeoption=5
-            output "Вы выбрали для установки Fonix's Lime Stitch."
+            output "Вы выбрали для установки Fonix's Minecraft Madness."
             output ""
             ;;
         6 ) themeoption=6
-            output "Вы выбрали для установки Fonix's Red Ape."
+            output "Вы выбрали для установки Fonix's Lime Stitch."
             output ""
             ;;
         7 ) themeoption=7
-            output "Вы выбрали для установки Fonix's BlackEnd Space."
+            output "Вы выбрали для установки Fonix's Red Ape."
             output ""
             ;;
         8 ) themeoption=8
+            output "Вы выбрали для установки Fonix's BlackEnd Space."
+            output ""
+            ;;
+        9 ) themeoption=9
             output "Вы выбрали для установки Fonix's Nothing But Graphite."
             output ""
-            ;;        
-        * ) output "Вы не ввели правильный выбор"
+            ;;
+        * ) output "Вы ввели неверный выбор."
             theme_options
     esac
-}   
+}
 
 required_infos() {
     output "Пожалуйста, введите желаемый адрес электронной почты пользователя:"
-    read email
+    read -r email
     dns_check
 }
 
-ssl_option(){
-    output "Вы хотите использовать SSL? [Y/n]: "
-    output "Если у вас есть домен, установите для него 'yes' для максимальной безопасности."
-    output "Если вы выберете 'no', сервер будет доступен через IP без SSL. Пожалуйста, имейте в виду, что это очень ненадежно и не рекомендуется!"
-    output "Если у вашей панели есть SSL, ваш демон также должен иметь SSL."
-    read RESPONSE
-    USE_SSL=true
-    if [[ "${RESPONSE}" =~ ^([nN][oO]|[nN])+$ ]]; then
-        USE_SSL=false
-    fi
-
-    if [ $USE_SSL = "true" ]; then
-        dns_check
-    fi
-}
-
 dns_check(){
-    output "Пожалуйста, введите ваш FQDN (panel.yourdomain.com):"
-    read FQDN
+    output "Пожалуйста, введите ваше полное доменное имя (panel.domain.tld):"
+    read -r FQDN
 
-    output "Проверка разрешения DNS."
-    SERVER_IP=$(curl -s http://checkip.amazonaws.com)
+    output "Разрешение DNS..."
+    SERVER_IP=$(dig +short myip.opendns.com @resolver1.opendns.com)
     DOMAIN_RECORD=$(dig +short ${FQDN})
     if [ "${SERVER_IP}" != "${DOMAIN_RECORD}" ]; then
         output ""
-        output "Введенный домен не преобразуется в первичный общедоступный IP-адрес этого сервера."
-        output "Пожалуйста, сделайте запись A, указывающую на ip вашего сервера. Например, если вы создаете запись A, называемую 'panel', указывающую на IP-адрес вашего сервера, ваше полное доменное имя будет panel.yourdomain.tld"
+        output "Введенный домен не соответствует первичному общедоступному IP-адресу этого сервера."
+        output "Пожалуйста, сделайте запись A, указывающую на IP-адрес вашего сервера. Например, если вы сделаете запись A под названием 'panel', указывающую на IP-адрес вашего сервера, ваше полное доменное имя будет panel.domain.tld."
         output "Если вы используете Cloudflare, отключите оранжевое облако."
-        output "Если у вас нет домена, вы можете получить бесплатный по адресу https://www.freenom.com/en/index.html?lang=en."
+        output "Если у вас нет домена, вы можете получить его бесплатно по адресу https://freenom.com"
         dns_check
-    else 
-        output "Домен разрешен правильно. Поехали дальше."
+    else
+        output "Домен определен правильно. Поехали дальше..."
     fi
 }
 
 theme() {
-    output "Тема установки инициализирована."
-    cd /var/www/pterodactyl
+    output "Инициализация установки темы..."
+    cd /var/www/pterodactyl || exit
     if [ "$themeoption" = "1" ]; then
-        output "Сохранение ванильной темы Птеродактиля."
+        output "Сохранение стандартной темы Pterodactyl."
     elif [ "$themeoption" = "2" ]; then
-        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/TangoTwist/build.sh | sh
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/PinkAnFluffy/build.sh | sh
     elif [ "$themeoption" = "3" ]; then
-        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/BlueBrick/build.sh | sh
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/TangoTwist/build.sh | sh
     elif [ "$themeoption" = "4" ]; then
-        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/MinecraftMadness/build.sh | sh 
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/BlueBrick/build.sh | sh
     elif [ "$themeoption" = "5" ]; then
-        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/LimeStitch/build.sh | sh
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/MinecraftMadness/build.sh | sh
     elif [ "$themeoption" = "6" ]; then
-        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/RedApe/build.sh | sh
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/LimeStitch/build.sh | sh
     elif [ "$themeoption" = "7" ]; then
-        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/BlackEndSpace/build.sh | sh
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/RedApe/build.sh | sh
     elif [ "$themeoption" = "8" ]; then
+        curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/BlackEndSpace/build.sh | sh
+    elif [ "$themeoption" = "9" ]; then
         curl https://raw.githubusercontent.com/TheFonix/Pterodactyl-Themes/master/MasterThemes/NothingButGraphite/build.sh | sh
     fi
     php artisan view:clear
@@ -349,201 +381,237 @@ theme() {
 }
 
 repositories_setup(){
-    output "Конфигурирование ваших репозиториев."
+    output "Настройка репозиториев ..."
     if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
         apt-get -y install sudo
-        apt-get -y install software-properties-common
+        apt-get -y install software-properties-common curl apt-transport-https ca-certificates gnupg
+        dpkg --remove-architecture i386
         echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
-        apt-get -y update 
+        apt-get -y update
+	      curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
         if [ "$lsb_dist" =  "ubuntu" ]; then
             LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
             add-apt-repository -y ppa:chris-lea/redis-server
-            add-apt-repository -y ppa:certbot/certbot
-            add-apt-repository -y ppa:nginx/development
-            if [ "$dist_version" = "18.10" ]; then
-                apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
-                add-apt-repository 'deb [arch=amd64] http://nyc2.mirrors.digitalocean.com/mariadb/repo/10.3/ubuntu cosmic main'
-                apt -y install tuned
-                tuned-adm profile latency-performance
-            elif [ "$dist_version" = "18.04" ]; then
-                apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
-                add-apt-repository -y 'deb [arch=amd64,arm64,ppc64el] http://nyc2.mirrors.digitalocean.com/mariadb/repo/10.3/ubuntu bionic main'
-                apt -y install tuned
-                tuned-adm profile latency-performance
-            elif [ "$dist_version" = "16.04" ]; then
-                apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
-                add-apt-repository 'deb [arch=amd64,arm64,i386,ppc64el] http://nyc2.mirrors.digitalocean.com/mariadb/repo/10.3/ubuntu xenial main'    
-                apt -y install tuned
-                tuned-adm profile latency-performance   
+            if [ "$dist_version" != "20.04" ]; then
+                add-apt-repository -y ppa:certbot/certbot
+                add-apt-repository -y ppa:nginx/development
             fi
+	        apt -y install tuned dnsutils
+                tuned-adm profile latency-performance
         elif [ "$lsb_dist" =  "debian" ]; then
             apt-get -y install ca-certificates apt-transport-https
-            if [ "$dist_version" = "9" ]; then
-                apt-get install -y software-properties-common dirmngr
+            echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/php.list
+            if [ "$dist_version" = "10" ]; then
+                apt -y install dirmngr
                 wget -q https://packages.sury.org/php/apt.gpg -O- | sudo apt-key add -
-                sudo echo "deb https://packages.sury.org/php/ stretch main" | sudo tee /etc/apt/sources.list.d/php.list
-                sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xF1656F24C74CD1D8
-                sudo add-apt-repository 'deb [arch=amd64,i386,ppc64el] http://nyc2.mirrors.digitalocean.com/mariadb/repo/10.3/debian stretch main'
+                sudo apt-key adv --fetch-keys 'https://mariadb.org/mariadb_release_signing_key.asc'
                 apt -y install tuned
                 tuned-adm profile latency-performance
-            elif [ "$dist_version" = "8" ]; then
-                wget -q https://packages.sury.org/php/apt.gpg -O- | sudo apt-key add -
-                echo "deb https://packages.sury.org/php/ jessie main" | sudo tee /etc/apt/sources.list.d/php.list
-                apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
-                add-apt-repository 'deb [arch=amd64,i386,ppc64el] http://nyc2.mirrors.digitalocean.com/mariadb/repo/10.3/debian jessie main'
-            fi
         fi
-        apt-get -y update 
+        apt-get -y update
         apt-get -y upgrade
         apt-get -y autoremove
-        apt-get -y autoclean   
-        apt-get -y install dnsutils curl
-    elif  [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
-        if  [ "$lsb_dist" =  "fedora" ] && [ "$dist_version" = "29" ]; then
-
-            bash -c 'cat > /etc/yum.repos.d/mariadb.repo' <<-'EOF'
-[mariadb]
-name = MariaDB
-baseurl = http://yum.mariadb.org/10.3/fedora29-amd64
-gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
-gpgcheck=1
-EOF
-
-            bash -c 'cat > /etc/yum.repos.d/nginx.repo' <<-'EOF'
-[heffer-nginx-mainline]
-name=Copr repo for nginx-mainline owned by heffer
-baseurl=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/fedora-$releasever-$basearch/
-type=rpm-md
-skip_if_unavailable=True
-gpgcheck=1
-gpgkey=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/pubkey.gpg
-repo_gpgcheck=0
-enabled=1
-enabled_metadata=1
-EOF
-
-            dnf -y install  http://rpms.remirepo.net/fedora/remi-release-29.rpm
-            dnf -y install dnf-plugins-core
-            dnf config-manager --set-enabled remi-php73
+        apt-get -y autoclean
+        apt-get -y install curl
+    elif  [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ]; then
+        if  [ "$lsb_dist" =  "fedora" ] ; then
+            if [ "$dist_version" = "34" ]; then
+                dnf -y install  http://rpms.remirepo.net/fedora/remi-release-34.rpm
+            elif [ "$dist_version" = "33" ]; then
+                dnf -y install  http://rpms.remirepo.net/fedora/remi-release-33.rpm
+            fi
+            dnf -y install dnf-plugins-core python2 libsemanage-devel
             dnf config-manager --set-enabled remi
-
-        elif  [ "$lsb_dist" =  "fedora" ] && [ "$dist_version" = "28" ]; then
-
-            bash -c 'cat > /etc/yum.repos.d/mariadb.repo' <<-'EOF'
-[mariadb]
-name = MariaDB
-baseurl = http://yum.mariadb.org/10.3/fedora28-amd64
-gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
-gpgcheck=1
-EOF
-
-            bash -c 'cat > /etc/yum.repos.d/nginx.repo' <<-'EOF'
-[heffer-nginx-mainline]
-name=Copr repo for nginx-mainline owned by heffer
-baseurl=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/fedora-$releasever-$basearch/
-type=rpm-md
-skip_if_unavailable=True
-gpgcheck=1
-gpgkey=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/pubkey.gpg
-repo_gpgcheck=0
-enabled=1
-enabled_metadata=1
-EOF
-            dnf -y install http://rpms.remirepo.net/fedora/remi-release-28.rpm
-            dnf -y install dnf-plugins-core
-            dnf config-manager --set-enabled remi-php73
+            dnf -y module enable php:remi-8.0
+	    dnf -y module enable nginx:mainline/common
+	    dnf -y module enable mariadb:14/server
+        elif  [ "$lsb_dist" =  "centos" ] && [ "$dist_version" = "8" ]; then
+            dnf -y install epel-release boost-program-options
+            dnf -y install http://rpms.remirepo.net/enterprise/remi-release-8.rpm
             dnf config-manager --set-enabled remi
-
-        elif  [ "$lsb_dist" =  "centos" ] && [ "$dist_version" = "7" ]; then
-
+            dnf -y module enable php:remi-8.0
+            dnf -y module enable nginx:mainline/common
+	    curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+	    dnf config-manager --set-enabled mariadb
+    fi
+            bash -c 'cat > /etc/yum.repos.d/nginx.repo' <<-'EOF'
+[nginx-mainline]
+name=nginx mainline repo
+baseurl=http://nginx.org/packages/mainline/centos/$releasever/$basearch/
+gpgcheck=1
+enabled=0
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+EOF
             bash -c 'cat > /etc/yum.repos.d/mariadb.repo' <<-'EOF'
 [mariadb]
 name = MariaDB
-baseurl = http://yum.mariadb.org/10.3/centos7-amd64
+baseurl = http://yum.mariadb.org/10.5/centos7-amd64
 gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
 gpgcheck=1
-EOF
-
-            bash -c 'cat > /etc/yum.repos.d/nginx.repo' <<-'EOF'
-[heffer-nginx-mainline]
-name=Copr repo for nginx-mainline owned by heffer
-baseurl=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/epel-7-$basearch/
-type=rpm-md
-skip_if_unavailable=True
-gpgcheck=1
-gpgkey=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/pubkey.gpg
-repo_gpgcheck=0
-enabled=1
-enabled_metadata=1
 EOF
 
             yum -y install epel-release
             yum -y install http://rpms.remirepo.net/enterprise/remi-release-7.rpm
-        elif  [ "$lsb_dist" =  "rhel" ]; then
-            
-            bash -c 'cat > /etc/yum.repos.d/mariadb.repo' <<-'EOF'        
-[mariadb]
-name = MariaDB
-baseurl = http://yum.mariadb.org/10.3/rhel7-amd64
-gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
-gpgcheck=1
-EOF
-
-            bash -c 'cat > /etc/yum.repos.d/nginx.repo' <<-'EOF'
-[heffer-nginx-mainline]
-name=Copr repo for nginx-mainline owned by heffer
-baseurl=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/epel-7-$basearch/
-type=rpm-md
-skip_if_unavailable=True
-gpgcheck=1
-gpgkey=https://copr-be.cloud.fedoraproject.org/results/heffer/nginx-mainline/pubkey.gpg
-repo_gpgcheck=0
-enabled=1
-enabled_metadata=1
-EOF
-            yum -y install epel-release
-            yum -y install http://rpms.remirepo.net/enterprise/remi-release-7.rpm
+            yum -y install policycoreutils-python yum-utils libsemanage-devel
+            yum-config-manager --enable remi
+            yum-config-manager --enable remi-php80
+	        yum-config-manager --enable nginx-mainline
+	        yum-config-manager --enable mariadb
+        elif  [ "$lsb_dist" =  "rhel" ] && [ "$dist_version" = "8" ]; then
+            dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+            dnf -y install boost-program-options
+            dnf -y install http://rpms.remirepo.net/enterprise/remi-release-8.rpm
+            dnf config-manager --set-enabled remi
+            dnf -y module enable php:remi-8.0
+            dnf -y module enable nginx:mainline/common
+	    curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+	    dnf config-manager --set-enabled mariadb
         fi
         yum -y install yum-utils tuned
         tuned-adm profile latency-performance
-        yum-config-manager --enable remi-php72
         yum -y upgrade
         yum -y autoremove
         yum -y clean packages
-        yum -y install curl bind-utils
+        yum -y install curl bind-utils cronie
+    fi
+}
+
+repositories_setup_0.7.19(){
+    output "Настройка репозиториев ..."
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        apt-get -y install sudo
+        apt-get -y install software-properties-common dnsutils gpg-agent
+        dpkg --remove-architecture i386
+        echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+        apt-get -y update
+	  curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+        if [ "$lsb_dist" =  "ubuntu" ]; then
+            LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
+            add-apt-repository -y ppa:chris-lea/redis-server
+            if [ "$dist_version" != "20.04" ]; then
+                add-apt-repository -y ppa:certbot/certbot
+                add-apt-repository -y ppa:nginx/development
+            fi
+	        apt -y install tuned dnsutils
+                tuned-adm profile latency-performance
+        elif [ "$lsb_dist" =  "debian" ]; then
+            apt-get -y install ca-certificates apt-transport-https
+            echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/php.list
+            if [ "$dist_version" = "10" ]; then
+                apt -y install dirmngr
+                wget -q https://packages.sury.org/php/apt.gpg -O- | sudo apt-key add -
+                sudo apt-key adv --fetch-keys 'https://mariadb.org/mariadb_release_signing_key.asc'
+                apt -y install tuned
+                tuned-adm profile latency-performance
+        fi
+        apt-get -y update
+        apt-get -y upgrade
+        apt-get -y autoremove
+        apt-get -y autoclean
+        apt-get -y install curl
+    elif  [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ]; then
+        if  [ "$lsb_dist" =  "fedora" ] ; then
+            if [ "$dist_version" = "34" ]; then
+                dnf -y install  http://rpms.remirepo.net/fedora/remi-release-34.rpm
+            elif [ "$dist_version" = "33" ]; then
+                dnf -y install  http://rpms.remirepo.net/fedora/remi-release-33.rpm
+            fi
+            dnf -y install dnf-plugins-core python2 libsemanage-devel
+            dnf config-manager --set-enabled remi
+            dnf -y module enable php:remi-8.0
+	    dnf -y module enable nginx:mainline/common
+	    dnf -y module enable mariadb:14/server
+        elif  [ "$lsb_dist" =  "centos" ] && [ "$dist_version" = "8" ]; then
+            dnf -y install epel-release boost-program-options
+            dnf -y install http://rpms.remirepo.net/enterprise/remi-release-8.rpm
+            dnf config-manager --set-enabled remi
+            dnf -y module enable php:remi-8.0
+            dnf -y module enable nginx:mainline/common
+	    curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+	    dnf config-manager --set-enabled mariadb
+    fi
+            bash -c 'cat > /etc/yum.repos.d/nginx.repo' <<-'EOF'
+[nginx-mainline]
+name=nginx mainline repo
+baseurl=http://nginx.org/packages/mainline/centos/$releasever/$basearch/
+gpgcheck=1
+enabled=0
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+EOF
+            bash -c 'cat > /etc/yum.repos.d/mariadb.repo' <<-'EOF'
+[mariadb]
+name = MariaDB
+baseurl = http://yum.mariadb.org/10.5/centos7-amd64
+gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+gpgcheck=1
+EOF
+
+            yum -y install epel-release
+            yum -y install http://rpms.remirepo.net/enterprise/remi-release-7.rpm
+            yum -y install policycoreutils-python yum-utils libsemanage-devel
+            yum-config-manager --enable remi
+            yum-config-manager --enable remi-php80
+	        yum-config-manager --enable nginx-mainline
+	        yum-config-manager --enable mariadb
+        elif  [ "$lsb_dist" =  "rhel" ] && [ "$dist_version" = "8" ]; then
+            dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+            dnf -y install boost-program-options
+            dnf -y install http://rpms.remirepo.net/enterprise/remi-release-8.rpm
+            dnf config-manager --set-enabled remi
+            dnf -y module enable php:remi-8.0
+            dnf -y module enable nginx:mainline/common
+	    curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+	    dnf config-manager --set-enabled mariadb
+        fi
+        yum -y install yum-utils tuned
+        tuned-adm profile latency-performance
+        yum -y upgrade
+        yum -y autoremove
+        yum -y clean packages
+        yum -y install curl bind-utils cronie
     fi
 }
 
 install_dependencies(){
-    output "Установка зависимостей."
+    output "Установка зависимостей ..."
     if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
         if [ "$webserver" = "1" ]; then
-            apt-get -y install php7.3 php7.3-cli php7.3-gd php7.3-mysql php7.3-pdo php7.3-mbstring php7.3-tokenizer php7.3-bcmath php7.3-xml php7.3-fpm php7.3-curl php7.3-zip curl tar unzip git redis-server nginx git wget expect jq
+            apt -y install php8.0 php8.0-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip} nginx tar unzip git redis-server nginx git wget expect
         elif [ "$webserver" = "2" ]; then
-            apt-get -y install php7.3 php7.3-cli php7.3-gd php7.3-mysql php7.3-pdo php7.3-mbstring php7.3-tokenizer php7.3-bcmath php7.3-xml php7.3-fpm php7.3-curl php7.3-zip curl tar unzip git redis-server apache2 libapache2-mod-php7.3 redis-server git wget expect jq
+             apt -y install php8.0 php8.0-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip} curl tar unzip git redis-server apache2 libapache2-mod-php8.0 redis-server git wget expect
         fi
-        sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y mariadb-server"
-    elif [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+        sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated mariadb-server"
+    else
+	if [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        if [ "$dist_version" = "8" ]; then
+	        dnf -y install MariaDB-server MariaDB-client --disablerepo=AppStream
+        fi
+	else
+	    dnf -y install MariaDB-server
+	fi
+	dnf -y module install php:remi-8.0
         if [ "$webserver" = "1" ]; then
-            yum -y install php php-common php-fpm php-cli php-json php-mysqlnd php-mcrypt php-gd php-mbstring php-pdo php-zip php-bcmath php-dom php-opcache mariadb-server redis nginx git policycoreutils-python-utils libsemanage-devel unzip wget expect jq
+            dnf -y install redis nginx git policycoreutils-python-utils unzip wget expect jq php-mysql php-zip php-bcmath tar
         elif [ "$webserver" = "2" ]; then
-            yum -y install php php-common php-fpm php-cli php-json php-mysqlnd php-mcrypt php-gd php-mbstring php-pdo php-zip php-bcmath php-dom php-opcache mariadb-server redis httpd git policycoreutils-python-utils libsemanage-devel mod_ssl unzip wget expect jq
+            dnf -y install redis httpd git policycoreutils-python-utils mod_ssl unzip wget expect jq php-mysql php-zip php-mcmath tar
         fi
     fi
 
-    output "Включение Сервисов."
+    output "Включение служб ..."
     if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
         systemctl enable redis-server
         service redis-server start
-        systemctl enable php7.3-fpm
-        service php7.3-fpm start
+        systemctl enable php8.0-fpm
+        service php8.0-fpm start
     elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         systemctl enable redis
         service redis start
         systemctl enable php-fpm
         service php-fpm start
     fi
-    
+
     systemctl enable cron
     systemctl enable mariadb
 
@@ -559,64 +627,127 @@ install_dependencies(){
             service httpd start
         fi
     fi
-    service cron start
-    service mariadb start
+    service mysql start
+}
+
+install_dependencies_0.7.19(){
+    output "Установка зависимостей ..."
+    if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
+        if [ "$webserver" = "1" ]; then
+            apt-get -y install php7.3 php7.3-cli php7.3-gd php7.3-mysql php7.3-pdo php7.3-mbstring php7.3-tokenizer php7.3-bcmath php7.3-xml php7.3-fpm php7.3-curl php7.3-zip curl tar unzip git redis-server nginx git wget expect
+        elif [ "$webserver" = "2" ]; then
+            apt-get -y install php7.3 php7.3-cli php7.3-gd php7.3-mysql php7.3-pdo php7.3-mbstring php7.3-tokenizer php7.3-bcmath php7.3-xml php7.3-fpm php7.3-curl php7.3-zip curl tar unzip git redis-server apache2 libapache2-mod-php7.3 redis-server git wget expect
+        fi
+        sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated mariadb-server"
+    else
+	if [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        if [ "$dist_version" = "8" ]; then
+	        dnf -y install MariaDB-server MariaDB-client --disablerepo=AppStream
+        fi
+	else
+	    dnf -y install MariaDB-server
+	fi
+	dnf -y module install php:remi-7.3
+        if [ "$webserver" = "1" ]; then
+            dnf -y install redis nginx git policycoreutils-python-utils unzip wget expect jq php-mysql php-zip php-bcmath tar
+        elif [ "$webserver" = "2" ]; then
+            dnf -y install redis httpd git policycoreutils-python-utils mod_ssl unzip wget expect jq php-mysql php-zip php-mcmath tar
+        fi
+    fi
+
+    output "Включение служб ..."
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        systemctl enable redis-server
+        service redis-server start
+        systemctl enable php7.3-fpm
+        service php7.3-fpm start
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        systemctl enable redis
+        service redis start
+        systemctl enable php-fpm
+        service php-fpm start
+    fi
+
+    systemctl enable cron
+    systemctl enable mariadb
+
+    if [ "$webserver" = "1" ]; then
+        systemctl enable nginx
+        service nginx start
+    elif [ "$webserver" = "2" ]; then
+        if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+            systemctl enable apache2
+            service apache2 start
+        elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+            systemctl enable httpd
+            service httpd start
+        fi
+    fi
+    service mysql start
 }
 
 install_pterodactyl() {
-    output "Создание баз данных и установка пароля root."
+    output "Создание баз данных и установка пароля root ..."
     password=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
     adminpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
     rootpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
     Q0="DROP DATABASE IF EXISTS test;"
     Q1="CREATE DATABASE IF NOT EXISTS panel;"
-    Q2="GRANT ALL ON panel.* TO 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$password';"
-    Q3="GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, EXECUTE, PROCESS, RELOAD, CREATE USER ON *.* TO 'admin'@'$SERVER_IP' IDENTIFIED BY '$adminpassword' WITH GRANT OPTION;"
-    Q4="SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$rootpassword');"
-    Q5="SET PASSWORD FOR 'root'@'127.0.0.1' = PASSWORD('$rootpassword');"
-    Q6="SET PASSWORD FOR 'root'@'::1' = PASSWORD('$rootpassword');"
-    Q7="DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
-    Q8="DELETE FROM mysql.user WHERE User='';"
-    Q9="DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';"
-    Q10="FLUSH PRIVILEGES;"
-    SQL="${Q0}${Q1}${Q2}${Q3}${Q4}${Q5}${Q6}${Q7}${Q8}${Q9}${Q10}"
+    Q2="SET old_passwords=0;"
+    Q3="GRANT ALL ON panel.* TO 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$password';"
+    Q4="GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, EXECUTE, PROCESS, RELOAD, LOCK TABLES, CREATE USER ON *.* TO 'admin'@'$SERVER_IP' IDENTIFIED BY '$adminpassword' WITH GRANT OPTION;"
+    Q5="SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$rootpassword');"
+    Q6="DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
+    Q7="DELETE FROM mysql.user WHERE User='';"
+    Q8="DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';"
+    Q9="FLUSH PRIVILEGES;"
+    SQL="${Q0}${Q1}${Q2}${Q3}${Q4}${Q5}${Q6}${Q7}${Q8}${Q9}"
     mysql -u root -e "$SQL"
 
-    output "Привязка MariaDB к 0.0.0.0."
-	if [ -f /etc/mysql/my.cnf ] ; then
-        sed -i -- 's/bind-address/# bind-address/g' /etc/mysql/my.cnf
-		sed -i '/\[mysqld\]/a bind-address = 0.0.0.0' /etc/mysql/my.cnf
-		output 'Перезапуск процесса MySQL...'
-		service mariadb restart
-	elif [ -f /etc/my.cnf ] ; then
-        sed -i -- 's/bind-address/# bind-address/g' /etc/my.cnf
-		sed -i '/\[mysqld\]/a bind-address = 0.0.0.0' /etc/my.cnf
-		output 'Перезапуск процесса MySQL...'
-		service mariadb restart
-	else 
-		output 'Файл my.cnf не найден! Пожалуйста, свяжитесь со службой поддержки.'
+    output "Привязка MariaDB/MySQL к 0.0.0.0."
+        if grep -Fqs "bind-address" /etc/mysql/mariadb.conf.d/50-server.cnf ; then
+		sed -i -- '/bind-address/s/#//g' /etc/mysql/mariadb.conf.d/50-server.cnf
+ 		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/mysql/mariadb.conf.d/50-server.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	elif grep -Fqs "bind-address" /etc/mysql/my.cnf ; then
+        	sed -i -- '/bind-address/s/#//g' /etc/mysql/my.cnf
+		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/mysql/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	elif grep -Fqs "bind-address" /etc/my.cnf ; then
+        	sed -i -- '/bind-address/s/#//g' /etc/my.cnf
+		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+    	elif grep -Fqs "bind-address" /etc/mysql/my.conf.d/mysqld.cnf ; then
+        	sed -i -- '/bind-address/s/#//g' /etc/mysql/my.conf.d/mysqld.cnf
+		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/mysql/my.conf.d/mysqld.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	else
+		output 'Не удалось обнаружить файл конфигурации MySQL! Обратитесь в службу поддержки.'
 	fi
-    
-    output "Загрузка Pterodactyl."
+
+    output "Загрузка Pterodactyl..."
     mkdir -p /var/www/pterodactyl
-    cd /var/www/pterodactyl
-    curl -Lo panel.tar.gz https://github.com/pterodactyl/panel/releases/download/v0.7.17/panel.tar.gz
-    tar --strip-components=1 -xzvf panel.tar.gz
+    cd /var/www/pterodactyl || exit
+    curl -Lo panel.tar.gz https://github.com/pterodactyl/panel/releases/download/${PANEL}/panel.tar.gz
+    tar -xzvf panel.tar.gz
     chmod -R 755 storage/* bootstrap/cache/
 
-    output "Установка Pterodactyl."
-    curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
-    cp .env.example .env
-    if [ "$lsb_dist" =  "rhel" ]; then
-        yum -y install composer
-        composer update
+    output "Установка Pterodactyl..."
+    if [ "$installoption" = "2" ] || [ "$installoption" = "6" ]; then
+    	curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer --version=1.10.16
     else
-        composer install --no-dev --optimize-autoloader
+        curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
     fi
+    cp .env.example .env
+    /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction
     php artisan key:generate --force
     php artisan p:environment:setup -n --author=$email --url=https://$FQDN --timezone=America/New_York --cache=redis --session=database --queue=redis --redis-host=127.0.0.1 --redis-pass= --redis-port=6379
     php artisan p:environment:database --host=127.0.0.1 --port=3306 --database=panel --username=pterodactyl --password=$password
-    output "Чтобы использовать внутреннюю отправку почты PHP, выберите [mail]. Чтобы использовать собственный SMTP-сервер, выберите [smtp]. Шифрование TLS рекомендуется."
+    output "Чтобы использовать внутреннюю отправку почты PHP, выберите [mail]. Чтобы использовать собственный SMTP-сервер, выберите [smtp]. Рекомендуется шифрование TLS."
     php artisan p:environment:mail
     php artisan migrate --seed --force
     php artisan p:user:make --email=$email --admin=1
@@ -628,11 +759,11 @@ install_pterodactyl() {
         elif [ "$webserver" = "2" ]; then
             chown -R apache:apache * /var/www/pterodactyl
         fi
-	    semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
+	semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
         restorecon -R /var/www/pterodactyl
     fi
 
-    output "Создание слушателей очереди панели"
+    output "Создание слушателей очереди панели ..."
     (crontab -l ; echo "* * * * * php /var/www/pterodactyl/artisan schedule:run >> /dev/null 2>&1")| crontab -
     service cron restart
 
@@ -649,7 +780,7 @@ ExecStart=/usr/bin/php /var/www/pterodactyl/artisan queue:work --queue=high,stan
 [Install]
 WantedBy=multi-user.target
 EOF
-    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         if [ "$webserver" = "1" ]; then
             cat > /etc/systemd/system/pteroq.service <<- 'EOF'
 Description=Pterodactyl Queue Worker
@@ -676,6 +807,135 @@ ExecStart=/usr/bin/php /var/www/pterodactyl/artisan queue:work --queue=high,stan
 WantedBy=multi-user.target
 EOF
         fi
+        setsebool -P httpd_can_network_connect 1
+	setsebool -P httpd_execmem 1
+	setsebool -P httpd_unified 1
+    fi
+    sudo systemctl daemon-reload
+    systemctl enable pteroq.service
+    systemctl start pteroq
+}
+
+install_pterodactyl_0.7.19() {
+    output "Создание баз данных и установка пароля root ..."
+    password=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
+    adminpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
+    rootpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
+    Q0="DROP DATABASE IF EXISTS test;"
+    Q1="CREATE DATABASE IF NOT EXISTS panel;"
+    Q2="SET old_passwords=0;"
+    Q3="GRANT ALL ON panel.* TO 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$password';"
+    Q4="GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, EXECUTE, PROCESS, RELOAD, LOCK TABLES, CREATE USER ON *.* TO 'admin'@'$SERVER_IP' IDENTIFIED BY '$adminpassword' WITH GRANT OPTION;"
+    Q5="SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$rootpassword');"
+    Q6="DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
+    Q7="DELETE FROM mysql.user WHERE User='';"
+    Q8="DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';"
+    Q9="FLUSH PRIVILEGES;"
+    SQL="${Q0}${Q1}${Q2}${Q3}${Q4}${Q5}${Q6}${Q7}${Q8}${Q9}"
+    mysql -u root -e "$SQL"
+
+    output "Привязка MariaDB/MySQL к 0.0.0.0."
+        if grep -Fqs "bind-address" /etc/mysql/mariadb.conf.d/50-server.cnf ; then
+		sed -i -- '/bind-address/s/#//g' /etc/mysql/mariadb.conf.d/50-server.cnf
+ 		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/mysql/mariadb.conf.d/50-server.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	elif grep -Fqs "bind-address" /etc/mysql/my.cnf ; then
+        	sed -i -- '/bind-address/s/#//g' /etc/mysql/my.cnf
+		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/mysql/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	elif grep -Fqs "bind-address" /etc/my.cnf ; then
+        	sed -i -- '/bind-address/s/#//g' /etc/my.cnf
+		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+    	elif grep -Fqs "bind-address" /etc/mysql/my.conf.d/mysqld.cnf ; then
+        	sed -i -- '/bind-address/s/#//g' /etc/mysql/my.conf.d/mysqld.cnf
+		sed -i -- '/bind-address/s/127.0.0.1/0.0.0.0/g' /etc/mysql/my.conf.d/mysqld.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	else
+		output 'Не удалось обнаружить файл конфигурации MySQL! Обратитесь в службу поддержки.'
+	fi
+
+    output "Загрузка Pterodactyl..."
+    mkdir -p /var/www/pterodactyl
+    cd /var/www/pterodactyl || exit
+    curl -Lo panel.tar.gz https://github.com/pterodactyl/panel/releases/download/${PANEL_LEGACY}/panel.tar.gz
+    tar --strip-components=1 -xzvf panel.tar.gz
+    chmod -R 755 storage/* bootstrap/cache/
+
+    output "Установка Pterodactyl..."
+    curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+    cp .env.example .env
+    /usr/local/bin/composer install --no-dev --optimize-autoloader
+    php artisan key:generate --force
+    php artisan p:environment:setup -n --author=$email --url=https://$FQDN --timezone=America/New_York --cache=redis --session=database --queue=redis --redis-host=127.0.0.1 --redis-pass= --redis-port=6379
+    php artisan p:environment:database --host=127.0.0.1 --port=3306 --database=panel --username=pterodactyl --password=$password
+    output "Чтобы использовать внутреннюю отправку почты PHP, выберите [mail]. Чтобы использовать собственный SMTP-сервер, выберите [smtp]. Рекомендуется шифрование TLS."
+    php artisan p:environment:mail
+    php artisan migrate --seed --force
+    php artisan p:user:make --email=$email --admin=1
+    if  [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        chown -R www-data:www-data * /var/www/pterodactyl
+    elif  [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        if [ "$webserver" = "1" ]; then
+            chown -R nginx:nginx * /var/www/pterodactyl
+        elif [ "$webserver" = "2" ]; then
+            chown -R apache:apache * /var/www/pterodactyl
+        fi
+	semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
+        restorecon -R /var/www/pterodactyl
+    fi
+
+    output "Создание слушателей очереди панели ..."
+    (crontab -l ; echo "* * * * * php /var/www/pterodactyl/artisan schedule:run >> /dev/null 2>&1")| crontab -
+    service cron restart
+
+    if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
+        cat > /etc/systemd/system/pteroq.service <<- 'EOF'
+[Unit]
+Description=Pterodactyl Queue Worker
+After=redis-server.service
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+ExecStart=/usr/bin/php /var/www/pterodactyl/artisan queue:work --queue=high,standard,low --sleep=3 --tries=3
+[Install]
+WantedBy=multi-user.target
+EOF
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        if [ "$webserver" = "1" ]; then
+            cat > /etc/systemd/system/pteroq.service <<- 'EOF'
+Description=Pterodactyl Queue Worker
+After=redis-server.service
+[Service]
+User=nginx
+Group=nginx
+Restart=always
+ExecStart=/usr/bin/php /var/www/pterodactyl/artisan queue:work --queue=high,standard,low --sleep=3 --tries=3
+[Install]
+WantedBy=multi-user.target
+EOF
+        elif [ "$webserver" = "2" ]; then
+            cat > /etc/systemd/system/pteroq.service <<- 'EOF'
+[Unit]
+Description=Pterodactyl Queue Worker
+After=redis-server.service
+[Service]
+User=apache
+Group=apache
+Restart=always
+ExecStart=/usr/bin/php /var/www/pterodactyl/artisan queue:work --queue=high,standard,low --sleep=3 --tries=3
+[Install]
+WantedBy=multi-user.target
+EOF
+        fi
+        setsebool -P httpd_can_network_connect 1
+	setsebool -P httpd_execmem 1
+	setsebool -P httpd_unified 1
     fi
     sudo systemctl daemon-reload
     systemctl enable pteroq.service
@@ -683,42 +943,159 @@ EOF
 }
 
 upgrade_pterodactyl(){
-    cd /var/www/pterodactyl
+    cd /var/www/pterodactyl || exit
     php artisan down
-    curl -L https://github.com/pterodactyl/panel/releases/download/v0.7.17/panel.tar.gz | tar --strip-components=1 -xzv
-    unzip panel
+    curl -L https://github.com/pterodactyl/panel/releases/download/${PANEL}/panel.tar.gz | tar --strip-components=1 -xzv
     chmod -R 755 storage/* bootstrap/cache
     composer install --no-dev --optimize-autoloader
     php artisan view:clear
+    php artisan config:clear
     php artisan migrate --force
     php artisan db:seed --force
-    chown -R www-data:www-data * /var/www/pterodactyl
-    if [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        chown -R www-data:www-data * /var/www/pterodactyl
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         chown -R apache:apache * /var/www/pterodactyl
         chown -R nginx:nginx * /var/www/pterodactyl
         semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
         restorecon -R /var/www/pterodactyl
     fi
-    output "Ваша панель обновлена до версии 0.7.17."
+    output "Ваша панель успешно обновлена до версии ${PANEL}"
+    php artisan up
+    php artisan queue:restart
+}
+
+upgrade_pterodactyl_1.0(){
+    cd /var/www/pterodactyl || exit
+    php artisan down
+    curl -L https://github.com/pterodactyl/panel/releases/download/${PANEL}/panel.tar.gz | tar --strip-components=1 -xzv
+    rm -rf $(find app public resources -depth | head -n -1 | grep -Fv "$(tar -tf panel.tar.gz)")
+    tar -xzvf panel.tar.gz && rm -f panel.tar.gz
+    chmod -R 755 storage/* bootstrap/cache
+    composer install --no-dev --optimize-autoloader
+    php artisan view:clear
+    php artisan config:clear
+    php artisan migrate --force
+    php artisan db:seed --force
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        chown -R www-data:www-data * /var/www/pterodactyl
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        chown -R apache:apache * /var/www/pterodactyl
+        chown -R nginx:nginx * /var/www/pterodactyl
+        semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
+        restorecon -R /var/www/pterodactyl
+    fi
+    output "Ваша панель успешно обновлена до версии ${PANEL}"
+    php artisan up
+    php artisan queue:restart
+}
+
+upgrade_pterodactyl_0.7.19(){
+    cd /var/www/pterodactyl || exit
+    php artisan down
+    curl -L https://github.com/pterodactyl/panel/releases/download/${PANEL_LEGACY}/panel.tar.gz | tar --strip-components=1 -xzv
+    chmod -R 755 storage/* bootstrap/cache
+    composer install --no-dev --optimize-autoloader
+    php artisan view:clear
+    php artisan config:clear
+    php artisan migrate --force
+    php artisan db:seed --force
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        chown -R www-data:www-data * /var/www/pterodactyl
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        chown -R apache:apache * /var/www/pterodactyl
+        chown -R nginx:nginx * /var/www/pterodactyl
+        semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
+        restorecon -R /var/www/pterodactyl
+    fi
+    output "Ваша панель успешно обновлена до версии ${PANEL_LEGACY}."
     php artisan up
     php artisan queue:restart
 }
 
 nginx_config() {
-    output "Отключение конфигурации по умолчанию"
+    output "Отключение конфигурации по умолчанию ..."
     rm -rf /etc/nginx/sites-enabled/default
-    output "Настройка Nginx Webserver"
-    
+    output "Настройка веб-сервера Nginx ..."
+
 echo '
 server_tokens off;
-
 server {
-    listen 80;
+    listen 80 default_server;
     server_name '"$FQDN"';
     return 301 https://$server_name$request_uri;
 }
 server {
-    listen 443 ssl http2;
+    listen 443 ssl http2 default_server;
+    server_name '"$FQDN"';
+    root /var/www/pterodactyl/public;
+    index index.php;
+    access_log /var/log/nginx/pterodactyl.app-access.log;
+    error_log  /var/log/nginx/pterodactyl.app-error.log error;
+    # allow larger file uploads and longer script runtimes
+    client_max_body_size 100m;
+    client_body_timeout 120s;
+    sendfile off;
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/'"$FQDN"'/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/'"$FQDN"'/privkey.pem;
+    ssl_session_cache shared:SSL:10m;
+    ssl_protocols TLSv1.2;
+    ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256';
+    ssl_prefer_server_ciphers on;
+    # See https://hstspreload.org/ before uncommenting the line below.
+    # add_header Strict-Transport-Security "max-age=15768000; preload;";
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Robots-Tag none;
+    add_header Content-Security-Policy "frame-ancestors 'self'";
+    add_header X-Frame-Options DENY;
+    add_header Referrer-Policy same-origin;
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/var/run/php/php8.0-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param PHP_VALUE "upload_max_filesize = 100M \n post_max_size=100M";
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_intercept_errors off;
+        fastcgi_buffer_size 16k;
+        fastcgi_buffers 4 16k;
+        fastcgi_connect_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_read_timeout 300;
+        include /etc/nginx/fastcgi_params;
+    }
+    location ~ /\.ht {
+        deny all;
+    }
+}
+' | sudo -E tee /etc/nginx/sites-available/pterodactyl.conf >/dev/null 2>&1
+    if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
+        sed -i 's/http2//g' /etc/nginx/sites-available/pterodactyl.conf
+    fi
+    ln -s /etc/nginx/sites-available/pterodactyl.conf /etc/nginx/sites-enabled/pterodactyl.conf
+    service nginx restart
+}
+
+nginx_config_0.7.19() {
+    output "Отключение конфигурации по умолчанию ..."
+    rm -rf /etc/nginx/sites-enabled/default
+    output "Настройка веб-сервера Nginx ..."
+
+echo '
+server_tokens off;
+server {
+    listen 80 default_server;
+    server_name '"$FQDN"';
+    return 301 https://$server_name$request_uri;
+}
+server {
+    listen 443 ssl http2 default_server;
     server_name '"$FQDN"';
     root /var/www/pterodactyl/public;
     index index.php;
@@ -767,69 +1144,23 @@ server {
     }
 }
 ' | sudo -E tee /etc/nginx/sites-available/pterodactyl.conf >/dev/null 2>&1
-
-    ln -s /etc/nginx/sites-available/pterodactyl.conf /etc/nginx/sites-enabled/pterodactyl.conf
-    service nginx restart
-}
-
-nginx_config_nossl() {
-    output "Отключение конфигурации по умолчанию"
-    rm -rf /etc/nginx/sites-enabled/default
-    output "Настройка Nginx Webserver"
-    
-echo '
-server_tokens off;
-
-server {
-    listen 80 default_server;
-    server_name _;
-    root /var/www/pterodactyl/public;
-    index index.php;
-    access_log /var/log/nginx/pterodactyl.app-access.log;
-    error_log  /var/log/nginx/pterodactyl.app-error.log error;
-    # allow larger file uploads and longer script runtimes
-    client_max_body_size 100m;
-    client_body_timeout 120s;
-    sendfile off;
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-    location ~ \.php$ {
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/var/run/php/php7.3-fpm.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param PHP_VALUE "upload_max_filesize = 100M \n post_max_size=100M";
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_param HTTP_PROXY "";
-        fastcgi_intercept_errors off;
-        fastcgi_buffer_size 16k;
-        fastcgi_buffers 4 16k;
-        fastcgi_connect_timeout 300;
-        fastcgi_send_timeout 300;
-        fastcgi_read_timeout 300;
-        include /etc/nginx/fastcgi_params;
-    }
-    location ~ /\.ht {
-        deny all;
-    }
-}
-' | sudo -E tee /etc/nginx/sites-available/pterodactyl.conf >/dev/null 2>&1
-
+    if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
+        sed -i 's/http2//g' /etc/nginx/sites-available/pterodactyl.conf
+    fi
     ln -s /etc/nginx/sites-available/pterodactyl.conf /etc/nginx/sites-enabled/pterodactyl.conf
     service nginx restart
 }
 
 apache_config() {
-    output "Отключение конфигурации по умолчанию"
+    output "Отключение конфигурации по умолчанию ..."
     rm -rf /etc/nginx/sites-enabled/default
-    output "Настройка Apache2"
+    output "Настройка веб-сервера Apache2 ..."
 echo '
 <VirtualHost *:80>
   ServerName '"$FQDN"'
   RewriteEngine On
   RewriteCond %{HTTPS} !=on
-  RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L] 
+  RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]
 </VirtualHost>
 <VirtualHost *:443>
   ServerName '"$FQDN"'
@@ -843,9 +1174,9 @@ echo '
   SSLEngine on
   SSLCertificateFile /etc/letsencrypt/live/'"$FQDN"'/fullchain.pem
   SSLCertificateKeyFile /etc/letsencrypt/live/'"$FQDN"'/privkey.pem
-</VirtualHost> 
+</VirtualHost>
 ' | sudo -E tee /etc/apache2/sites-available/pterodactyl.conf >/dev/null 2>&1
-    
+
     ln -s /etc/apache2/sites-available/pterodactyl.conf /etc/apache2/sites-enabled/pterodactyl.conf
     a2enmod ssl
     a2enmod rewrite
@@ -853,18 +1184,17 @@ echo '
 }
 
 nginx_config_redhat(){
-    output "Настройка Nginx Webserver"
-    
+    output "Настройка веб-сервера Nginx ..."
+
 echo '
 server_tokens off;
-
 server {
-    listen 80;
+    listen 80 default_server;
     server_name '"$FQDN"';
     return 301 https://$server_name$request_uri;
 }
 server {
-    listen 443 ssl http2;
+    listen 443 ssl http2 default_server;
     server_name '"$FQDN"';
     root /var/www/pterodactyl/public;
     index index.php;
@@ -873,7 +1203,7 @@ server {
     # allow larger file uploads and longer script runtimes
     client_max_body_size 100m;
     client_body_timeout 120s;
-    
+
     sendfile off;
     # strengthen ssl security
     ssl_certificate /etc/letsencrypt/live/'"$FQDN"'/fullchain.pem;
@@ -882,7 +1212,7 @@ server {
     ssl_prefer_server_ciphers on;
     ssl_session_cache shared:SSL:10m;
     ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
-    
+
     # See the link below for more SSL information:
     #     https://raymii.org/s/tutorials/Strong_SSL_Security_On_nginx.html
     #
@@ -924,63 +1254,14 @@ server {
     restorecon -R /var/www/pterodactyl
 }
 
-nginx_config_redhat_nossl(){
-    output "Настройка Nginx Webserver"
-    
-echo '
-server_tokens off;
-
-server {
-    listen 80 default_server;
-    server_name _;
-    root /var/www/pterodactyl/public;
-    index index.php;
-    access_log /var/log/nginx/pterodactyl.app-access.log;
-    error_log  /var/log/nginx/pterodactyl.app-error.log error;
-    # allow larger file uploads and longer script runtimes
-    client_max_body_size 100m;
-    client_body_timeout 120s;
-    
-    sendfile off;
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-    location ~ \.php$ {
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/var/run/php-fpm/pterodactyl.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param PHP_VALUE "upload_max_filesize = 100M \n post_max_size=100M";
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_param HTTP_PROXY "";
-        fastcgi_intercept_errors off;
-        fastcgi_buffer_size 16k;
-        fastcgi_buffers 4 16k;
-        fastcgi_connect_timeout 300;
-        fastcgi_send_timeout 300;
-        fastcgi_read_timeout 300;
-        include /etc/nginx/fastcgi_params;
-    }
-    location ~ /\.ht {
-        deny all;
-    }
-}
-' | sudo -E tee /etc/nginx/conf.d/pterodactyl.conf >/dev/null 2>&1
-
-    service nginx restart
-    chown -R nginx:nginx $(pwd)
-    semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
-    restorecon -R /var/www/pterodactyl
-}
-
 apache_config_redhat() {
-    output "Настройка Apache2"
+    output "Настройка веб-сервера Apache2 ..."
 echo '
 <VirtualHost *:80>
   ServerName '"$FQDN"'
   RewriteEngine On
   RewriteCond %{HTTPS} !=on
-  RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L] 
+  RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]
 </VirtualHost>
 <VirtualHost *:443>
   ServerName '"$FQDN"'
@@ -992,13 +1273,13 @@ echo '
   SSLEngine on
   SSLCertificateFile /etc/letsencrypt/live/'"$FQDN"'/fullchain.pem
   SSLCertificateKeyFile /etc/letsencrypt/live/'"$FQDN"'/privkey.pem
-</VirtualHost> 
+</VirtualHost>
 ' | sudo -E tee /etc/httpd/conf.d/pterodactyl.conf >/dev/null 2>&1
     service httpd restart
 }
 
 php_config(){
-    output "Настройка PHP сокета."
+    output "Настройка сокета PHP ..."
     bash -c 'cat > /etc/php-fpm.d/www-pterodactyl.conf' <<-'EOF'
 [pterodactyl]
 user = nginx
@@ -1016,16 +1297,49 @@ EOF
 }
 
 webserver_config(){
-    if  [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
-        if [ "$webserver" = "1" ]; then
-            nginx_config
-        elif [ "$webserver" = "2" ]; then
-            apache_config
+    if [ "$lsb_dist" =  "debian" ] || [ "$lsb_dist" =  "ubuntu" ]; then
+        if [ "$installoption" = "1" ]; then
+            if [ "$webserver" = "1" ]; then
+                nginx_config
+            elif [ "$webserver" = "2" ]; then
+                apache_config
+            fi
+        elif [ "$installoption" = "2" ]; then
+            if [ "$webserver" = "1" ]; then
+                nginx_config_0.7.19
+            elif [ "$webserver" = "2" ]; then
+                apache_config
+            fi
+        elif [ "$installoption" = "3" ]; then
+            if [ "$webserver" = "1" ]; then
+                nginx_config
+            elif [ "$webserver" = "2" ]; then
+                apache_config
+            fi
+        elif [ "$installoption" = "4" ]; then
+            if [ "$webserver" = "1" ]; then
+                nginx_config_0.7.19
+            elif [ "$webserver" = "2" ]; then
+                apache_config
+            fi
+        elif [ "$installoption" = "5" ]; then
+            if [ "$webserver" = "1" ]; then
+                nginx_config
+            elif [ "$webserver" = "2" ]; then
+                apache_config
+            fi
+        elif [ "$installoption" = "6" ]; then
+            if [ "$webserver" = "1" ]; then
+                nginx_config_0.7.19
+            elif [ "$webserver" = "2" ]; then
+                apache_config
+            fi
         fi
-    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         if [ "$webserver" = "1" ]; then
             php_config
             nginx_config_redhat
+	    chown -R nginx:nginx /var/lib/php/session
         elif [ "$webserver" = "2" ]; then
             apache_config_redhat
         fi
@@ -1037,40 +1351,110 @@ setup_pterodactyl(){
     install_pterodactyl
     ssl_certs
     webserver_config
+}
+
+
+setup_pterodactyl_0.7.19(){
+    install_dependencies_0.7.19
+    install_pterodactyl_0.7.19
+    ssl_certs
+    webserver_config
     theme
 }
 
-install_daemon() {
-    cd /root
-    output "Установка зависимостей Pterodactyl Daemon."
+install_wings() {
+    cd /root || exit
+    output "Установка зависимостей Pterodactyl Wings ..."
     if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
         apt-get -y install curl tar unzip
-    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         yum -y install curl tar unzip
     fi
-    output "Включение поддержки Swap для Docker и установка NodeJS."
+
+    output "Установка Docker"
+    curl -sSL https://get.docker.com/ | CHANNEL=stable bash
+
+    service docker start
+    systemctl enable docker
+    output "Включение поддержки SWAP для Docker."
+    sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& swapaccount=1/' /etc/default/grub
+    output "Установка Pterodactyl wings..."
+    mkdir -p /etc/pterodactyl /srv/daemon-data
+    cd /etc/pterodactyl || exit
+    curl -L -o /usr/local/bin/wings https://github.com/pterodactyl/wings/releases/download/${WINGS}/wings_linux_amd64
+    chmod u+x /usr/local/bin/wings
+    bash -c 'cat > /etc/systemd/system/wings.service' <<-'EOF'
+[Unit]
+Description=Pterodactyl Wings Daemon
+After=docker.service
+
+[Service]
+User=root
+WorkingDirectory=/etc/pterodactyl
+LimitNOFILE=4096
+PIDFile=/var/run/wings/daemon.pid
+ExecStart=/usr/local/bin/wings
+Restart=on-failure
+StartLimitInterval=600
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl enable wings
+    systemctl start wings
+    output "Wings ${WINGS} установлен в вашей системе."
+}
+
+install_daemon() {
+    cd /root || exit
+    output "Установка зависимостей Pterodactyl Daemon ..."
+    if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
+        apt-get -y install curl tar unzip
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        yum -y install curl tar unzip
+    fi
+
+    output "Установка Docker"
+    curl -sSL https://get.docker.com/ | CHANNEL=stable bash
+
+    service docker start
+    systemctl enable docker
+    output "Включение поддержки SWAP для Docker и установка NodeJS ..."
     sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& swapaccount=1/' /etc/default/grub
     if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
-        sudo update-grub
-        curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
-        apt -y install nodejs make gcc g++ node-gyp
-        apt-get -y update 
+        update-grub
+        curl -sL https://deb.nodesource.com/setup_12.x | sudo bash -
+            if [ "$lsb_dist" =  "ubuntu" ] && [ "$dist_version" = "20.04" ]; then
+                apt -y install nodejs make gcc g++
+                npm install node-gyp
+            elif [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "10" ]; then
+                apt -y install nodejs make gcc g++
+            else
+                apt -y install nodejs make gcc g++ node-gyp
+            fi
+        apt-get -y update
         apt-get -y upgrade
         apt-get -y autoremove
         apt-get -y autoclean
-    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ]; then
         grub2-mkconfig -o "$(readlink /etc/grub2.conf)"
-        curl --silent --location https://rpm.nodesource.com/setup_10.x | sudo bash -
-        yum -y install nodejs gcc-c++ make
+        if [ "$lsb_dist" =  "fedora" ]; then
+            dnf -y module install nodejs:12/minimal
+	          dnf install -y tar unzip make gcc gcc-c++ python2
+	      fi
+	  elif [ "$lsb_dist" =  "centos" ] && [ "$dist_version" = "8" ]; then
+	      dnf -y module install nodejs:12/minimal
+	      dnf install -y tar unzip make gcc gcc-c++ python2
         yum -y upgrade
         yum -y autoremove
         yum -y clean packages
     fi
-    output "Установка Птеродактиль Демона."
+    output "Установка Pterodactyl daemon..."
     mkdir -p /srv/daemon /srv/daemon-data
-    cd /srv/daemon
-    curl -L https://github.com/pterodactyl/daemon/releases/download/v0.6.13/daemon.tar.gz | tar --strip-components=1 -xzv
-    npm install --only=production
+    cd /srv/daemon || exit
+    curl -L https://github.com/pterodactyl/daemon/releases/download/${DAEMON_LEGACY}/daemon.tar.gz | tar --strip-components=1 -xzv
+    npm install --only=production --no-audit --unsafe-perm
     bash -c 'cat > /etc/systemd/system/wings.service' <<-'EOF'
 [Unit]
 Description=Pterodactyl Wings Daemon
@@ -1090,43 +1474,81 @@ EOF
 
     systemctl daemon-reload
     systemctl enable wings
-    if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
-        kernel_modifications_d8
-    fi
 
-    output "Установка демона почти завершена. Перейдите на панель и получите команду 'Auto deploy' на вкладке конфигурации узла."
+    output "Установка Daemon почти завершена, перейдите на панель и получите команду «Автоматическое развертывание» на вкладке конфигурации узла."
     output "Вставьте команду автоматического развертывания ниже: "
     read AUTODEPLOY
     ${AUTODEPLOY}
     service wings start
+    output "Daemon ${DAEMON_LEGACY} установлен в вашей системе."
+}
+
+migrate_wings(){
+    mkdir -p /etc/pterodactyl
+    curl -L -o /usr/local/bin/wings https://github.com/pterodactyl/wings/releases/download/${WINGS}/wings_linux_amd64
+    chmod u+x /usr/local/bin/wings
+    systemctl stop wings
+    rm -rf /srv/daemon
+    systemctl disable --now pterosftp
+    rm /etc/systemd/system/pterosftp.service
+    bash -c 'cat > /etc/systemd/system/wings.service' <<-'EOF'
+[Unit]
+Description=Pterodactyl Wings Daemon
+After=docker.service
+
+[Service]
+User=root
+WorkingDirectory=/etc/pterodactyl
+LimitNOFILE=4096
+PIDFile=/var/run/wings/daemon.pid
+ExecStart=/usr/local/bin/wings
+Restart=on-failure
+StartLimitInterval=600
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now wings
+    output "Ваш daemon перенесен в wings."
 }
 
 upgrade_daemon(){
     cd /srv/daemon
     service wings stop
-    curl -L https://github.com/pterodactyl/daemon/releases/download/v0.6.13/daemon.tar.gz | tar --strip-components=1 -xzv
+    curl -L https://github.com/pterodactyl/daemon/releases/download/${DAEMON_LEGACY}/daemon.tar.gz | tar --strip-components=1 -xzv
     npm install -g npm
-    npm install --only=production
+    npm install --only=production --no-audit --unsafe-perm
     service wings restart
-    output "Ваш демон обновлен до версии 0.6.13."
-    output "npm был обновлен до последней версии."
+    output "Ваш daemon обновлен до версии ${DAEMON_LEGACY}."
+    output "npm обновлен до последней версии."
 }
 
 install_standalone_sftp(){
+    os_check
+    if  [ "$lsb_dist" =  "ubuntu" ] ||  [ "$lsb_dist" =  "debian" ]; then
+        apt-get -y install jq
+    elif  [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "centos" ]; then
+        yum -y install jq
+    fi
+    if [ ! -f /srv/daemon/config/core.json ]; then
+        warn "ПЕРЕД УСТАНОВКОЙ АВТОНОМНОГО SFTP-СЕРВЕРА ВЫ ДОЛЖНЫ НАСТРОИТЬ ДЕЙМОН ДОЛЖНЫМ ОБРАЗОМ!"
+        exit 11
+    fi
     cd /srv/daemon
     if [ $(cat /srv/daemon/config/core.json | jq -r '.sftp.enabled') == "null" ]; then
-        output "Обновление конфига для включения sftp-сервера."
+        output "Обновление конфигурации для включения sftp-сервера ..."
         cat /srv/daemon/config/core.json | jq '.sftp.enabled |= false' > /tmp/core
         cat /tmp/core > /srv/daemon/config/core.json
         rm -rf /tmp/core
     elif [ $(cat /srv/daemon/config/core.json | jq -r '.sftp.enabled') == "false" ]; then
-       output "Конфиг уже настроен для sftp server."
+       output "Конфигурация уже настроена для SFTP-сервера."
     else 
-       output "Возможно, вы установили для sftp значение true, и это не удастся."
+       output "Возможно, вы намеренно установили для SFTP значение true, что приведет к сбою."
     fi
     service wings restart
-    output "Установка автономного SFTP-сервера."
-    curl -Lo sftp-server https://github.com/pterodactyl/sftp-server/releases/download/v1.0.4/sftp-server
+    output "Установка автономного SFTP-сервера ..."
+    curl -Lo sftp-server https://github.com/pterodactyl/sftp-server/releases/download/v1.0.5/sftp-server
     chmod +x sftp-server
     bash -c 'cat > /etc/systemd/system/pterosftp.service' <<-'EOF'
 [Unit]
@@ -1148,25 +1570,38 @@ EOF
 }
 
 upgrade_standalone_sftp(){
-    output "Отключение автономного SFTP-сервера."
+    output "Отключение автономного сервера SFTP ..."
     service pterosftp stop
-    curl -Lo sftp-server https://github.com/pterodactyl/sftp-server/releases/download/v1.0.4/sftp-server
+    curl -Lo sftp-server https://github.com/pterodactyl/sftp-server/releases/download/v1.0.5/sftp-server
     chmod +x sftp-server
     service pterosftp start
-    output "Ваш автономный SFTP-сервер обновлён до версии 1.0.4"
+    output "Ваш автономный сервер SFTP успешно обновлен до версии 1.0.5."
+}
+
+install_mobile(){
+    cd /var/www/pterodactyl || exit
+    composer config repositories.cloud composer https://packages.pterodactyl.cloud
+    composer require pterodactyl/mobile-addon --update-no-dev --optimize-autoloader
+    php artisan migrate --force
+}
+
+upgrade_mobile(){
+    cd /var/www/pterodactyl || exit
+    composer update pterodactyl/mobile-addon
+    php artisan migrate --force
 }
 
 install_phpmyadmin(){
-    output "Установка phpMyAdmin."
-    cd /var/www/pterodactyl/public
+    output "Установка phpMyAdmin..."
+    cd /var/www/pterodactyl/public || exit
     rm -rf phpmyadmin
-    wget https://files.phpmyadmin.net/phpMyAdmin/5.0.2/phpMyAdmin-5.0.2-all-languages.zip
-    unzip phpMyAdmin-5.0.2-all-languages
-    mv phpMyAdmin-5.0.2-all-languages phpmyadmin
-    rm -rf phpMyAdmin-5.0.2-all-languages.zip
-    cd /var/www/pterodactyl/public/phpmyadmin
+    wget https://files.phpmyadmin.net/phpMyAdmin/${PHPMYADMIN}/phpMyAdmin-${PHPMYADMIN}-all-languages.zip
+    unzip phpMyAdmin-${PHPMYADMIN}-all-languages.zip
+    mv phpMyAdmin-${PHPMYADMIN}-all-languages phpmyadmin
+    rm -rf phpMyAdmin-${PHPMYADMIN}-all-languages.zip
+    cd /var/www/pterodactyl/public/phpmyadmin || exit
 
-    SERVER_IP=$(curl -s http://checkip.amazonaws.com)
+    SERVER_IP=$(dig +short myip.opendns.com @resolver1.opendns.com)
     BOWFISH=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 34 | head -n 1`
     bash -c 'cat > /var/www/pterodactyl/public/phpmyadmin/config.inc.php' <<EOF
 <?php
@@ -1194,7 +1629,7 @@ EOF
     output "Установка завершена."
     if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
         chown -R www-data:www-data * /var/www/pterodactyl
-    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         chown -R apache:apache * /var/www/pterodactyl
         chown -R nginx:nginx * /var/www/pterodactyl
         semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/pterodactyl/storage(/.*)?"
@@ -1202,36 +1637,12 @@ EOF
     fi
 }
 
-kernel_modifications_d8(){
-    output "Модификация Grub."
-    sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& cgroup_enable=memory/' /etc/default/grub  
-    output "Добавление репозитория backport." 
-    echo deb http://http.debian.net/debian jessie-backports main > /etc/apt/sources.list.d/jessie-backports.list
-    echo deb http://http.debian.net/debian jessie-backports main contrib non-free > /etc/apt/sources.list.d/jessie-backports.list
-    output "Обновление серверных пакетов."
-    apt-get -y update
-    apt-get -y upgrade
-    apt-get -y autoremove
-    apt-get -y autoclean
-    output"Установка нового ядра"
-    apt install -t jessie-backports linux-image-4.9.0-0.bpo.7-amd64
-    output "Модификация Docker."
-    sed -i 's,/usr/bin/dockerd,/usr/bin/dockerd --storage-driver=overlay2,g' /lib/systemd/system/docker.service
-    systemctl daemon-reload
-    service docker start
-}
-
 ssl_certs(){
-    output "Установка LetsEncrypt и создание SSL-сертификата."
-    cd /root
+    output "Установка Let's Encrypt и создание SSL-сертификата ..."
+    cd /root || exit
     if  [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
-        if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
-            wget https://dl.eff.org/certbot-auto
-            chmod a+x certbot-auto
-        else
-            apt-get -y install certbot
-        fi
-    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+        apt-get -y install certbot
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
         yum -y install certbot
     fi
     if [ "$webserver" = "1" ]; then
@@ -1239,20 +1650,17 @@ ssl_certs(){
     elif [ "$webserver" = "2" ]; then
         if  [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
             service apache2 stop
-        elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+        elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
             service httpd stop
         fi
     fi
 
-    if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
-        ./certbot-auto certonly --standalone --email "$email" --agree-tos -d "$FQDN" --non-interactive
-    else
-        certbot certonly --standalone --email "$email" --agree-tos -d "$FQDN" --non-interactive
-    fi
+    certbot certonly --standalone --email "$email" --agree-tos -d "$FQDN" --non-interactive
+    
     if [ "$installoption" = "2" ]; then
         if  [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
             ufw deny 80
-        elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+        elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
             firewall-cmd --permanent --remove-port=80/tcp
             firewall-cmd --reload
         fi
@@ -1262,100 +1670,95 @@ ssl_certs(){
         elif [ "$webserver" = "2" ]; then
             if  [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
                 service apache2 restart
-            elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+            elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
                 service httpd restart
             fi
         fi
     fi
-
-    if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
-        apt -y install cronie
+       
+        if [ "$lsb_dist" =  "debian" ] || [ "$lsb_dist" =  "ubuntu" ]; then
         if [ "$installoption" = "1" ]; then
             if [ "$webserver" = "1" ]; then
-                (crontab -l ; echo "0 0,12 * * * ./certbot-auto renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1')| crontab -
             elif [ "$webserver" = "2" ]; then
-                (crontab -l ; echo "0 0,12 * * * ./certbot-auto renew --pre-hook "service apache2 stop" --post-hook "service apache2 restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service apache2 stop" --post-hook "service apache2 restart" >> /dev/null 2>&1')| crontab -
             fi
         elif [ "$installoption" = "2" ]; then
-            (crontab -l ; echo "0 0,12 * * * ./certbot-auto renew --pre-hook "ufw allow 80" --pre-hook "service wings stop" --post-hook "ufw deny 80" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
+            if [ "$webserver" = "1" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1')| crontab -
+            elif [ "$webserver" = "2" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service apache2 stop" --post-hook "service apache2 restart" >> /dev/null 2>&1')| crontab -
+            fi
         elif [ "$installoption" = "3" ]; then
+            (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "ufw allow 80" --pre-hook "service wings stop" --post-hook "ufw deny 80" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+        elif [ "$installoption" = "4" ]; then
+            (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "ufw allow 80" --pre-hook "service wings stop" --post-hook "ufw deny 80" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+        elif [ "$installoption" = "5" ]; then
             if [ "$webserver" = "1" ]; then
-                (crontab -l ; echo "0 0,12 * * * ./certbot-auto renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
             elif [ "$webserver" = "2" ]; then
-                (crontab -l ; echo "0 0,12 * * * ./certbot-auto renew --pre-hook "service apache2 stop" --pre-hook "service wings stop" --post-hook "service apache2 restart" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service apache2 stop" --pre-hook "service wings stop" --post-hook "service apache2 restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
             fi
-        fi            
-    elif [ "$lsb_dist" =  "debian" ] || [ "$lsb_dist" =  "ubuntu" ]; then
-        apt -y install cronie
-        if [ "$installoption" = "1" ]; then
+        elif [ "$installoption" = "6" ]; then
             if [ "$webserver" = "1" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
             elif [ "$webserver" = "2" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service apache2 stop" --post-hook "service apache2 restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service apache2 stop" --pre-hook "service wings stop" --post-hook "service apache2 restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
             fi
-        elif [ "$installoption" = "2" ]; then
-            (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "ufw allow 80" --pre-hook "service wings stop" --post-hook "ufw deny 80" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
-        elif [ "$installoption" = "3" ]; then
-            if [ "$webserver" = "1" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
-            elif [ "$webserver" = "2" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service apache2 stop" --pre-hook "service wings stop" --post-hook "service apache2 restart" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
-            fi
-        fi    
+        fi
     elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
-        yum -y install cronie
         if [ "$installoption" = "1" ]; then
             if [ "$webserver" = "1" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1')| crontab -
             elif [ "$webserver" = "2" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service httpd stop" --post-hook "service httpd restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service httpd stop" --post-hook "service httpd restart" >> /dev/null 2>&1')| crontab -
             fi
         elif [ "$installoption" = "2" ]; then
-            (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "firewall-cmd --add-port=80/tcp && firewall-cmd --reload" --pre-hook "service wings stop" --post-hook "firewall-cmd --remove-port=80/tcp && firewall-cmd --reload" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
-        elif [ "$installoption" = "3" ]; then
             if [ "$webserver" = "1" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx restart" >> /dev/null 2>&1')| crontab -
             elif [ "$webserver" = "2" ]; then
-                (crontab -l ; echo "0 0,12 * * * certbot renew --pre-hook "service httpd stop" --pre-hook "service wings stop" --post-hook "service httpd restart" --post-hook "service wings restart" >> /dev/null 2>&1")| crontab -
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service httpd stop" --post-hook "service httpd restart" >> /dev/null 2>&1')| crontab -
             fi
-        fi    
+        elif [ "$installoption" = "3" ]; then
+            (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "firewall-cmd --add-port=80/tcp && firewall-cmd --reload" --pre-hook "service wings stop" --post-hook "firewall-cmd --remove-port=80/tcp && firewall-cmd --reload" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+        elif [ "$installoption" = "4" ]; then
+            (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "firewall-cmd --add-port=80/tcp && firewall-cmd --reload" --pre-hook "service wings stop" --post-hook "firewall-cmd --remove-port=80/tcp && firewall-cmd --reload" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+        elif [ "$installoption" = "5" ]; then
+            if [ "$webserver" = "1" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+            elif [ "$webserver" = "2" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service httpd stop" --pre-hook "service wings stop" --post-hook "service httpd restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+            fi
+        elif [ "$installoption" = "5" ]; then
+            if [ "$webserver" = "1" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+            elif [ "$webserver" = "2" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service httpd stop" --pre-hook "service wings stop" --post-hook "service httpd restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+            fi
+        elif [ "$installoption" = "6" ]; then
+            if [ "$webserver" = "1" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service nginx stop" --pre-hook "service wings stop" --post-hook "service nginx restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+            elif [ "$webserver" = "2" ]; then
+                (crontab -l ; echo '0 0,12 * * * certbot renew --pre-hook "service httpd stop" --pre-hook "service wings stop" --post-hook "service httpd restart" --post-hook "service wings restart" >> /dev/null 2>&1')| crontab -
+            fi
+        fi
     fi
-    service cron restart
 }
 
 firewall(){
-    rm -rf /etc/rc.local
-    printf '%s\n' '#!/bin/bash' 'exit 0' | sudo tee -a /etc/rc.local
-    chmod +x /etc/rc.local
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        apt -y install iptables
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "rhel" ] || [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "cloudlinux" ]; then
+        yum -y install iptables
+    fi
 
-    iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
-    iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
-    iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG NONE -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,FIN FIN -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL ALL -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -j DROP 
-    iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
-    iptables -A INPUT -p tcp -m connlimit --connlimit-above 1000 --connlimit-mask 32 --connlimit-saddr -j REJECT --reject-with tcp-reset
-    iptables -t mangle -A PREROUTING -f -j DROP
-    /sbin/iptables -N port-scanning 
-    /sbin/iptables -A port-scanning -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s --limit-burst 2 -j RETURN 
-    /sbin/iptables -A port-scanning -j DROP  
-    sh -c "iptables-save > /etc/iptables.conf"
-    sed -i -e '$i \iptables-restore < /etc/iptables.conf\n' /etc/rc.local
-
-    output "Настройка Fail2Ban"
+    curl -sSL https://raw.githubusercontent.com/tommytran732/Anti-DDOS-Iptables/master/iptables-no-prompt.sh | sudo bash
+    block_icmp
+    javapipe_kernel
+    output "Настройка Fail2Ban ..."
     if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
         apt -y install fail2ban
-    elif [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "rhel" ]; then
         yum -y install fail2ban
     fi 
     systemctl enable fail2ban
@@ -1370,7 +1773,7 @@ enabled = true
 EOF
     service fail2ban restart
 
-    output "Настройка вашего брандмауэра."
+    output "Настройка брандмауэра ..."
     if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
         apt-get -y install ufw
         ufw allow 22
@@ -1380,9 +1783,23 @@ EOF
             ufw allow 3306
         elif [ "$installoption" = "2" ]; then
             ufw allow 80
+            ufw allow 443
+            ufw allow 3306
+        elif [ "$installoption" = "3" ]; then
+            ufw allow 80
             ufw allow 8080
             ufw allow 2022
-        elif [ "$installoption" = "3" ]; then
+        elif [ "$installoption" = "4" ]; then
+            ufw allow 80
+            ufw allow 8080
+            ufw allow 2022
+        elif [ "$installoption" = "5" ]; then
+            ufw allow 80
+            ufw allow 443
+            ufw allow 8080
+            ufw allow 2022
+            ufw allow 3306
+        elif [ "$installoption" = "6" ]; then
             ufw allow 80
             ufw allow 443
             ufw allow 8080
@@ -1390,58 +1807,141 @@ EOF
             ufw allow 3306
         fi
         yes |ufw enable 
-    elif [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "fedora" ] ||  [ "$lsb_dist" =  "rhel" ]; then
+    elif [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "rhel" ]; then
         yum -y install firewalld
         systemctl enable firewalld
         systemctl start firewalld
         if [ "$installoption" = "1" ]; then
             firewall-cmd --add-service=http --permanent
             firewall-cmd --add-service=https --permanent 
-            firewall-cmd --add-service=mysql --permanent 
+            firewall-cmd --add-service=mysql --permanent
         elif [ "$installoption" = "2" ]; then
-            firewall-cmd --permanent --add-port=80/tcp
+            firewall-cmd --add-service=http --permanent
+            firewall-cmd --add-service=https --permanent
+            firewall-cmd --add-service=mysql --permanent
+        elif [ "$installoption" = "3" ]; then
+            firewall-cmd --permanent --add-service=80/tcp
             firewall-cmd --permanent --add-port=2022/tcp
             firewall-cmd --permanent --add-port=8080/tcp
-        elif [ "$installoption" = "3" ]; then
+        elif [ "$installoption" = "4" ]; then
+            firewall-cmd --permanent --add-service=80/tcp
+            firewall-cmd --permanent --add-port=2022/tcp
+            firewall-cmd --permanent --add-port=8080/tcp
+        elif [ "$installoption" = "5" ]; then
             firewall-cmd --add-service=http --permanent
             firewall-cmd --add-service=https --permanent 
             firewall-cmd --permanent --add-port=2022/tcp
             firewall-cmd --permanent --add-port=8080/tcp
-            firewall-cmd --add-service=mysql --permanent 
+            firewall-cmd --permanent --add-service=mysql
+        elif [ "$installoption" = "6" ]; then
+            firewall-cmd --add-service=http --permanent
+            firewall-cmd --add-service=https --permanent
+            firewall-cmd --permanent --add-port=2022/tcp
+            firewall-cmd --permanent --add-port=8080/tcp
+            firewall-cmd --permanent --add-service=mysql
         fi
-        firewall-cmd --reload
     fi
 }
 
-mariadb_root_reset(){
-    service mariadb stop
-    mysqld_safe --skip-grant-tables >res 2>&1 &
-    sleep 5
+block_icmp(){
+    output "Блокировать пакеты ICMP (Ping)?"
+    output "Вы должны выбрать [1], если вы не используете систему мониторинга, и [2] в противном случае."
+    output "[1] Да."
+    output "[2] Нет."
+    read icmp
+    case $icmp in
+        1 ) /sbin/iptables -t mangle -A PREROUTING -p icmp -j DROP
+            (crontab -l ; echo "@reboot /sbin/iptables -t mangle -A PREROUTING -p icmp -j DROP >> /dev/null 2>&1")| crontab - 
+            ;;
+        2 ) output "Правило пропуска ..."
+            ;;
+        * ) output "Вы ввели неверный выбор."
+            block_icmp
+    esac    
+}
+
+javapipe_kernel(){
+    output "Применить конфигурации ядра JavaPipe (https://javapipe.com/blog/iptables-ddos-protection)?"
+    output "[1] да."
+    output "[2] Нет."
+    read javapipe
+    case $javapipe in
+        1)  sh -c "$(curl -sSL https://raw.githubusercontent.com/tommytran732/Anti-DDOS-Iptables/master/javapipe_kernel.sh)"
+            ;;
+        2)  output "Изменения ядра JavaPipe не применяются."
+            ;;
+        * ) output "Вы ввели неверный выбор."
+            javapipe_kernel
+    esac 
+}
+
+install_database() {
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        apt -y install mariadb-server
+	elif [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "rhel" ]; then
+        if [ "$dist_version" = "8" ]; then
+	        dnf -y install MariaDB-server MariaDB-client --disablerepo=AppStream
+        fi
+	else 
+	    dnf -y install MariaDB-server
+	fi
+
+    output "Создание баз данных и установка пароля root ..."
+    password=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
+    adminpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
     rootpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
-    Q1="UPDATE user SET plugin='';"
-    Q2="UPDATE user SET password=PASSWORD('$rootpassword') WHERE user='root';"
-    Q3="FLUSH PRIVILEGES;"
-    SQL="${Q1}${Q2}${Q3}"
-    mysql mysql -e "$SQL"
-    pkill mysqld
-    service mariadb restart
-    output "Ваш пароль root для MariaDB $rootpassword"
+    Q0="DROP DATABASE IF EXISTS test;"
+    Q1="CREATE DATABASE IF NOT EXISTS panel;"
+    Q2="SET old_passwords=0;"
+    Q3="GRANT ALL ON panel.* TO 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$password';"
+    Q4="GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, EXECUTE, PROCESS, RELOAD, LOCK TABLES, CREATE USER ON *.* TO 'admin'@'$SERVER_IP' IDENTIFIED BY '$adminpassword' WITH GRANT OPTION;"
+    Q5="SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$rootpassword');"
+    Q6="DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
+    Q7="DELETE FROM mysql.user WHERE User='';"
+    Q8="DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';"
+    Q9="FLUSH PRIVILEGES;"
+    SQL="${Q0}${Q1}${Q2}${Q3}${Q4}${Q5}${Q6}${Q7}${Q8}${Q9}"
+    mysql -u root -e "$SQL"
+
+    output "Привязка MariaDB/MySQL к 0.0.0.0."
+	if [ -f /etc/mysql/my.cnf ] ; then
+        sed -i -- 's/bind-address/# bind-address/g' /etc/mysql/my.cnf
+		sed -i '/\[mysqld\]/a bind-address = 0.0.0.0' /etc/mysql/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	elif [ -f /etc/my.cnf ] ; then
+        sed -i -- 's/bind-address/# bind-address/g' /etc/my.cnf
+		sed -i '/\[mysqld\]/a bind-address = 0.0.0.0' /etc/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+    	elif [ -f /etc/mysql/my.conf.d/mysqld.cnf ] ; then
+        sed -i -- 's/bind-address/# bind-address/g' /etc/my.cnf
+		sed -i '/\[mysqld\]/a bind-address = 0.0.0.0' /etc/my.cnf
+		output 'Перезапуск MySQL процесса ...'
+		service mysql restart
+	else 
+		output 'Файл my.cnf не найден! Обратитесь в службу поддержки.'
+	fi
+
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        yes | ufw allow 3306
+    elif [ "$lsb_dist" =  "centos" ] || [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "rhel" ]; then
+        firewall-cmd --permanent --add-service=mysql
+        firewall-cmd --reload
+    fi 
+
+    broadcast_database
 }
 
 database_host_reset(){
     SERVER_IP=$(curl -s http://checkip.amazonaws.com)
-    service mariadb stop
-    mysqld_safe --skip-grant-tables >res 2>&1 &
-    sleep 5
     adminpassword=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1`
-    Q1="UPDATE user SET plugin='';"
-    Q2="UPDATE user SET password=PASSWORD('$adminpassword') WHERE user='admin';"
-    Q3="FLUSH PRIVILEGES;"
-    SQL="${Q1}${Q2}${Q3}"
+    Q0="SET old_passwords=0;"
+    Q1="SET PASSWORD FOR 'admin'@'$SERVER_IP' = PASSWORD('$adminpassword');"
+    Q2="FLUSH PRIVILEGES;"
+    SQL="${Q0}${Q1}${Q2}"
     mysql mysql -e "$SQL"
-    pkill mysqld
-    service mariadb restart
-    output "Новая информация о хосте базы данных:"
+    output "Информация о новом хосте базы данных:"
     output "Хост: $SERVER_IP"
     output "Порт: 3306"
     output "Пользователь: admin"
@@ -1450,94 +1950,130 @@ database_host_reset(){
 
 broadcast(){
     if [ "$installoption" = "1" ] || [ "$installoption" = "3" ]; then
+        broadcast_database
+    fi
+    output "###############################################################"
+    output "БРАНДМАУЭР ИНФОРМАЦИЯ"
+    output ""
+    output "По умолчанию все ненужные порты заблокированы."
+    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
+        output "Используйте 'ufw allow <порт>' для включения нужных портов."
+    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] && [ "$dist_version" != "8" ]; then
+        output "Используйте 'firewall-cmd --permanent --add-port=<port>/tcp', чтобы включить нужные порты"
+    fi
+    output "###############################################################"
+    output ""
+}
+
+broadcast_database(){
         output "###############################################################"
-        output "Информация MARIADB"
+        output "MARIADB/MySQL ИНФОРМАЦИЯ"
         output ""
-        output "Ваш пароль root для MariaDB $rootpassword"
+        output "Ваш пароль root для MariaDB/MySQL: $rootpassword"
         output ""
-        output "Создайте свой хост MariaDB со следующей информацией:"
+        output "Создайте в панеле базу данных со следующей информацией:"
         output "Хост: $SERVER_IP"
         output "Порт: 3306"
         output "Пользователь: admin"
         output "Пароль: $adminpassword"
         output "###############################################################"
         output ""
-    fi
-    output "###############################################################"
-    output "ИНФОРМАЦИЯ ФЕЙЕРВЕРЛ"
-    output ""
-    output "Все ненужные порты заблокированы по умолчанию."
-    if [ "$lsb_dist" =  "ubuntu" ] || [ "$lsb_dist" =  "debian" ]; then
-        output "Используйте 'ufw allow <port>' чтобы включить желаемые порты"
-    elif [ "$lsb_dist" =  "fedora" ] || [ "$lsb_dist" =  "centos" ] ||  [ "$lsb_dist" =  "rhel" ]; then
-        output "Используйте 'firewall-cmd --permanent --add-port=<port>/tcp' чтобы включить желаемые порты."
-        semanage permissive -a httpd_t
-        semanage permissive -a redis_t
-    fi
-    output "###############################################################"
-    output ""
-
-    if [ "$installoption" = "2" ] || [ "$installoption" = "3" ]; then
-        if [ "$lsb_dist" =  "debian" ] && [ "$dist_version" = "8" ]; then
-            output "Пожалуйста, перезапустите демон сервера, чтобы применить необходимые изменения ядра в Debian 8."
-        fi
-    fi
-                         
 }
 
 #Execution
 preflight
+install_options
 case $installoption in 
-    1)  webserver_options
-        theme_options
-        repositories_setup
-        required_infos
-        firewall
-        setup_pterodactyl
-        broadcast
-        ;;
-    2)  repositories_setup
-        required_infos
-        firewall
-        ssl_certs
-        install_daemon
-        broadcast
-        ;;
-    3)  webserver_options
-        theme_options
-        repositories_setup
-        required_infos
-        firewall
-        setup_pterodactyl
-        install_daemon
-        broadcast
-        ;;
-    4)  install_standalone_sftp
-        ;;
-    5)  theme_options
-        upgrade_pterodactyl
-        theme
-        ;;
-    6)  upgrade_daemon
-        ;;
-    7)  theme_options
-        upgrade_pterodactyl
-        theme
-        upgrade_daemon
-        ;;
-    8)  upgrade_standalone_sftp
-        ;;
-    9)  install_phpmyadmin
-        ;;
-    10)  theme_options
-        if [ "$themeoption" = "1" ]; then
-            upgrade_pterodactyl
-        fi
-        theme
-        ;;
-    11) mariadb_root_reset
-        ;;
-    12) database_host_reset
-        ;;
+        1)   webserver_options
+             repositories_setup
+             required_infos
+             firewall
+             setup_pterodactyl
+             broadcast
+	     broadcast_database
+             ;;
+        2)   webserver_options
+             theme_options
+             repositories_setup_0.7.19
+             required_infos
+             firewall
+             setup_pterodactyl_0.7.19
+             broadcast
+             ;;
+        3)   repositories_setup
+             required_infos
+             firewall
+             ssl_certs
+             install_wings
+             broadcast
+	     broadcast_database
+             ;;
+        4)   repositories_setup_0.7.19
+             required_infos
+             firewall
+             ssl_certs
+             install_daemon
+             broadcast
+             ;;
+        5)   webserver_options
+             repositories_setup
+             required_infos
+             firewall
+             ssl_certs
+             setup_pterodactyl
+             install_wings
+             broadcast
+             ;;
+        6)   webserver_options
+             theme_options
+             repositories_setup_0.7.19
+             required_infos
+             firewall
+             setup_pterodactyl_0.7.19
+             install_daemon
+             broadcast
+             ;;
+        7)   install_standalone_sftp
+             ;;
+        8)   upgrade_pterodactyl
+             ;;
+        9)   upgrade_pterodactyl_1.0
+             ;;
+        10)  theme_options
+             upgrade_pterodactyl_0.7.19
+             theme
+             ;;
+        11)  upgrade_daemon
+             ;;
+        12)  migrate_wings
+             ;;
+        13)  upgrade_pterodactyl_1.0
+             migrate_wings
+             ;;
+        14)  theme_options
+             upgrade_pterodactyl_0.7.19
+             theme
+             upgrade_daemon
+             ;;
+        15)  upgrade_standalone_sftp
+             ;;
+        16)  install_mobile
+             ;;
+        17)  upgrade_mobile
+             ;;
+        18)  install_phpmyadmin
+             ;;
+        19)  repositories_setup
+             install_database
+             ;;
+        20)  theme_options
+             if [ "$themeoption" = "1" ]; then
+             	upgrade_pterodactyl_0.7.19
+             fi
+             theme
+            ;;
+        21) curl -sSL https://raw.githubusercontent.com/tommytran732/MariaDB-Root-Password-Reset/master/mariadb-104.sh | sudo bash
+            ;;
+        22) database_host_reset
+            ;;
 esac
-

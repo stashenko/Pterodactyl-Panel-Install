@@ -740,7 +740,7 @@ install_pterodactyl() {
     output "Установка Pterodactyl..."
     curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=compose
     cp .env.example .env
-    /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction
+    composer install --no-dev --optimize-autoloader
     php artisan key:generate --force
     php artisan p:environment:setup -n --author=$email --url=https://$FQDN --timezone=Europe/Moscow --cache=redis --session=database --queue=redis --redis-host=127.0.0.1 --redis-pass= --redis-port=6379
     php artisan p:environment:database --host=127.0.0.1 --port=3306 --database=panel --username=pterodactyl --password=$password

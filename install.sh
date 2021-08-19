@@ -249,7 +249,7 @@ install_options(){
             output "Вы выбрали сброс пароля root MariaDB."
             ;;
         22 ) installoption=22
-            output "Вы выбрали сброс пароля базы данных."
+            output "Вы выбрали сброс пароля admin базы данных."
             ;;
         * ) output "Вы ввели неверный выбор."
             install_options
@@ -331,13 +331,13 @@ theme_options() {
 }
 
 required_infos() {
-    output "Пожалуйста, введите желаемый адрес электронной почты пользователя:"
+    output "Пожалуйста, введите желаемый адрес электронной почты Администратора панели:"
     read -r email
     dns_check
 }
 
 dns_check(){
-    output "Пожалуйста, введите ваше полное доменное имя (panel.domain.tld):"
+    output "Пожалуйста, введите ваше полное доменное имя (пример panel.domain.tld):"
     read -r FQDN
 
     output "Разрешение DNS..."
@@ -738,15 +738,11 @@ install_pterodactyl() {
     chmod -R 755 storage/* bootstrap/cache/
 
     output "Установка Pterodactyl..."
-    if [ "$installoption" = "2" ] || [ "$installoption" = "6" ]; then
-    	curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer --version=1.10.16
-    else
-        curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
-    fi
+    curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=compose
     cp .env.example .env
     /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction
     php artisan key:generate --force
-    php artisan p:environment:setup -n --author=$email --url=https://$FQDN --timezone=America/New_York --cache=redis --session=database --queue=redis --redis-host=127.0.0.1 --redis-pass= --redis-port=6379
+    php artisan p:environment:setup -n --author=$email --url=https://$FQDN --timezone=Europe/Moscow --cache=redis --session=database --queue=redis --redis-host=127.0.0.1 --redis-pass= --redis-port=6379
     php artisan p:environment:database --host=127.0.0.1 --port=3306 --database=panel --username=pterodactyl --password=$password
     output "Чтобы использовать внутреннюю отправку почты PHP, выберите [mail]. Чтобы использовать собственный SMTP-сервер, выберите [smtp]. Рекомендуется шифрование TLS."
     php artisan p:environment:mail

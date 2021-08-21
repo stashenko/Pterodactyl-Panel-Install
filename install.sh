@@ -160,7 +160,6 @@ os_check(){
 
 install_options(){
     output "Выберите вариант установки:"
-    output "[0] Завершение работы скрипта."
     output "[1] Установить панель ${PANEL}."
     output "[2] Установить панель ${PANEL_LEGACY}."
     output "[3] Установить wings ${WINGS}."

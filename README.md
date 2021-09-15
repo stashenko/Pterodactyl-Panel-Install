@@ -75,8 +75,20 @@
 ####Установка:
 * Шаг 1. Скопируйте код и вставьте в консоль и нажмите Enter.
 
-* **"curl -Lo install.sh https://raw.githubusercontent.com/stashenko/Pterodactyl-Panel-Install/master/install.sh"**
+* **`curl -Lo install.sh https://raw.githubusercontent.com/stashenko/Pterodactyl-Panel-Install/master/install.sh`**
 
 * Шаг 2. Скопируйте код и вставьте в консоль и нажмите Enter.
 
-* **"bash install.sh"**
+* **`bash install.sh`**
+
+# Поддерживаемая операционная система
+| Опер. система     | Версия  | Поддержка            | Рекомендуется      |
+| ----------------- | ------- | -------------------- | ------------------ |
+| Ubuntu            | 20.04   | :heavy_check_mark:   | :heavy_check_mark: |
+|                   | 18.04   | :heavy_check_mark:   | :heavy_check_mark: |
+| Debian            | 10      | :heavy_check_mark:   | :heavy_check_mark: |
+| CentOS            | Stream  | :heavy_check_mark:   | :heavy_check_mark: |
+|                   | 8       | :heavy_check_mark:   | :heavy_check_mark: |
+| RHEL              | 8       | :heavy_check_mark:   | :red_circle:       |
+| Fedora            | 34      | :heavy_check_mark:   | :heavy_check_mark: |
+|                   | 33      | :heavy_check_mark:   | :heavy_check_mark: |

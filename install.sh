@@ -126,7 +126,7 @@ os_check(){
             exit 2
         fi
     elif [ "$lsb_dist" = "debian" ]; then
-        if [ "$dist_version" != "10" ]; then
+        if [ "$dist_version" != "10" ] && [ "$dist_version" != "11" ]; then
             output "Неподдерживаемая версия Debian. Поддерживается только Debian 10."
             exit 2
         fi
@@ -136,7 +136,7 @@ os_check(){
             exit 2
         fi
     elif [ "$lsb_dist" = "centos" ]; then
-        if [ "$dist_version" != "8" ]; then
+        if [ "$dist_version" != "8" ] && [ "$dist_version" != "7" ]; then
             output "Неподдерживаемая версия CentOS. Поддерживаются только CentOS Stream и 8."
             exit 2
         fi

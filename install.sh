@@ -174,7 +174,7 @@ install_options(){
     output "[3] Установить панель ${PANEL} и Установить wings ${WINGS}."
     output "[4] Обновить (1.x) панель до ${PANEL}."
     output "[5] Обновить wings до ${WINGS}."
-    output "[6] Установить панель до ${PANEL} и wings до ${WINGS}."
+    output "[6] Обновить панель до ${PANEL} и wings до ${WINGS}."
     output "[7] Установка phpMyAdmin (используйте это только после того, как вы установили панель)."
     output "[8] Аварийный сброс пароля root MariaDB."
     output "[9] Аварийный сброс пароля базы данных."

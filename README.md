@@ -70,7 +70,6 @@
 | RHEL              | 8       | :heavy_check_mark:   | :red_circle:       |
 |                   | 9       | :heavy_check_mark:   | :heavy_check_mark: |
 | Fedora            | 35      | :heavy_check_mark:   | :heavy_check_mark: |
-|                   | 33      | :heavy_check_mark:   | :heavy_check_mark: |
 | Rocky Linux       | 8       | :heavy_check_mark:   | :heavy_check_mark: |
 |                   | 9       | :heavy_check_mark:   | :heavy_check_mark: |
 | AlmaLinux         | 8       | :heavy_check_mark:   | :heavy_check_mark: |

@@ -38,10 +38,10 @@
 * Автоматическое закрытие и защита портов
 --------------------------------
 ####Автоматическая установка:
-* PHP 8.2 со следующими расширениями: cli, openssl, gd, mysql, PDO, mbstring, tokenizer, bcmath, xmlили dom, curl, zip, и , fpm
+* PHP 8.2 со следующими расширениями: cli, openssl, gd, mysql, PDO, mbstring, tokenizer, bcmath, xml или dom, curl, zip, и , fpm
 * MySQL или MariaDB
 * Redis ( redis-server)
-* Веб-сервер (Apache, NGINX)
+* Веб-сервер NGINX
 * curl
 * tar
 * unzip
